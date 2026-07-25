@@ -15,6 +15,8 @@
   "is_private",
   "project_type",
   "client",
+  "start_date",
+  "end_date",
   "description",
   "members_section",
   "members",
@@ -86,6 +88,16 @@
    "in_standard_filter": 1,
    "label": "Client",
    "options": "Hive Client"
+  },
+  {
+   "fieldname": "start_date",
+   "fieldtype": "Date",
+   "label": "Start Date"
+  },
+  {
+   "fieldname": "end_date",
+   "fieldtype": "Date",
+   "label": "End Date"
   },
   {
    "fieldname": "description",
