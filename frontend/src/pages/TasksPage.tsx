@@ -19,6 +19,7 @@ import {
   FloppyDiskIcon,
   MoreHorizontalIcon,
   RepeatIcon,
+  CheckmarkCircle02Icon,
 } from "@hugeicons/core-free-icons"
 import { format } from "date-fns"
 import {
@@ -95,6 +96,7 @@ import { TaskTimeline } from "@/components/TaskTimeline"
 import { TaskDetailSheet } from "@/components/TaskDetailSheet"
 import { usePinnedTasks } from "@/context/PinnedTasksContext"
 import { useCelebration } from "@/hooks/useTaskCelebration"
+import { useShowCompleted } from "@/hooks/useShowCompleted"
 
 interface TaskRow {
   task: HiveTask
@@ -310,6 +312,7 @@ export function TasksPage() {
   const { resolvedTheme } = useTheme()
   const { celebrate } = useCelebration()
   const { pinnedTaskNames, togglePin, isPinned } = usePinnedTasks()
+  const [showCompleted, toggleShowCompleted] = useShowCompleted()
 
   const { data: tasks, isLoading: tasksLoading, mutate: tasksMutate } = useFrappeGetDocList<HiveTask>(
     "Hive Task",
@@ -462,6 +465,8 @@ export function TasksPage() {
   const filteredTasks = useMemo(() => {
     if (!tasks) return []
     return tasks.filter((task) => {
+      // Completed (Done) tasks are hidden across all views unless the user opts in.
+      if (!showCompleted && task.status === "Done") return false
       if (search) {
         const q = search.toLowerCase()
         const matchName = task.name.toLowerCase().includes(q)
@@ -479,23 +484,23 @@ export function TasksPage() {
       }
       return true
     })
-  }, [tasks, search, statusFilter, priorityFilter, projectFilter, assigneeFilter, projectMap, assigneesByTask])
+  }, [tasks, showCompleted, search, statusFilter, priorityFilter, projectFilter, assigneeFilter, projectMap, assigneesByTask])
 
-  // Group filtered tasks by status for kanban view, sorted by due date ascending (nulls last)
-  // Done column only shows tasks completed in the last 7 days (#143)
+  // Count of completed tasks currently hidden (respects other active filters except the Done hide itself).
+  const completedCount = useMemo(
+    () => (tasks ?? []).filter((t) => t.status === "Done").length,
+    [tasks],
+  )
+
+  // Group filtered tasks by status for kanban view, sorted by due date ascending (nulls last).
+  // Done visibility is governed by the "Show completed" toggle via filteredTasks.
   const tasksByStatus = useMemo(() => {
     const grouped: Record<string, HiveTask[]> = {}
     for (const status of TASK_STATUSES) {
       grouped[status] = []
     }
-    const sevenDaysAgo = new Date()
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-    const cutoff = sevenDaysAgo.toISOString().split("T")[0]
     for (const task of filteredTasks) {
       if (grouped[task.status]) {
-        if (task.status === "Done" && (!task.completed_on || task.completed_on < cutoff)) {
-          continue
-        }
         grouped[task.status].push(task)
       }
     }
@@ -761,6 +766,18 @@ export function TasksPage() {
             label="Assignee:"
             placeholder="All"
           />
+          <Button
+            variant={showCompleted ? "secondary" : "outline"}
+            onClick={toggleShowCompleted}
+            className="gap-1.5"
+            aria-pressed={showCompleted}
+            title={showCompleted ? "Hide completed tasks" : "Show completed tasks"}
+          >
+            <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4" />
+            {showCompleted
+              ? "Hide completed"
+              : `Show completed${completedCount ? ` (${completedCount})` : ""}`}
+          </Button>
         </div>
       </div>
 

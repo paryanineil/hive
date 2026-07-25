@@ -26,6 +26,7 @@ import {
   Delete02Icon,
   GitBranchIcon,
   SourceCodeIcon,
+  CheckmarkCircle02Icon,
 } from "@hugeicons/core-free-icons"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -75,6 +76,7 @@ import { useUser } from "@/context/UserContext"
 import { useAgentProjectEvents } from "@/hooks/useAgentEvents"
 import { usePinnedTasks } from "@/context/PinnedTasksContext"
 import { useCelebration } from "@/hooks/useTaskCelebration"
+import { useShowCompleted } from "@/hooks/useShowCompleted"
 import { useShortcut } from "@/hooks/useShortcut"
 import { Kbd } from "@/components/ui/kbd"
 import { PROJECT_STATUS_VARIANT } from "@/lib/variants"
@@ -139,6 +141,7 @@ export function ProjectDetailPage() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [milestoneFilter, setMilestoneFilter] = useState<string>("all")
   const { pinnedTaskNames, togglePin, isPinned } = usePinnedTasks()
+  const [showCompleted, toggleShowCompleted] = useShowCompleted()
 
   // "T" keyboard shortcut to open create task dialog (not for client users)
   const openCreateDialog = useCallback(() => {
@@ -545,31 +548,33 @@ export function ProjectDetailPage() {
     }
   }
 
-  // Filter tasks by milestone (for kanban view)
+  // Filter tasks by milestone (for kanban view) and hide completed unless opted in.
   const filteredTasks = useMemo(() =>
     tasks?.filter((task) => {
+      // Completed (Done) tasks are hidden across all views unless the user opts in.
+      if (!showCompleted && task.status === "Done") return false
       if (milestoneFilter === "all") return true
       if (milestoneFilter === "none") return !task.milestone
       return task.milestone === milestoneFilter
     }),
-  [tasks, milestoneFilter])
+  [tasks, showCompleted, milestoneFilter])
 
-  // Group filtered tasks by status, sorted by due date ascending (nulls last)
-  // Done column only shows tasks completed in the last 7 days (#143)
+  // Count of completed tasks in this project (for the toggle button label).
+  const completedCount = useMemo(
+    () => (tasks ?? []).filter((t) => t.status === "Done").length,
+    [tasks],
+  )
+
+  // Group filtered tasks by status, sorted by due date ascending (nulls last).
+  // Done visibility is governed by the "Show completed" toggle via filteredTasks.
   const tasksByStatus = useMemo(() => {
     const grouped: Record<string, HiveTask[]> = {}
     for (const status of TASK_STATUSES) {
       grouped[status] = []
     }
-    const sevenDaysAgo = new Date()
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-    const cutoff = sevenDaysAgo.toISOString().split("T")[0]
     if (filteredTasks) {
       for (const task of filteredTasks) {
         if (grouped[task.status]) {
-          if (task.status === "Done" && (!task.completed_on || task.completed_on < cutoff)) {
-            continue
-          }
           grouped[task.status].push(task)
         }
       }
@@ -959,37 +964,54 @@ export function ProjectDetailPage() {
         {/* Tasks Tab */}
         <TabsContent value="tasks">
           <div className="pt-2 space-y-3">
-            {/* Milestone filter */}
-            {milestones && milestones.length > 0 && (
+            {/* Milestone filter + completed toggle */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
-                <HugeiconsIcon icon={FilterIcon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
-                <Select value={milestoneFilter} onValueChange={setMilestoneFilter}>
-                  <SelectTrigger className="h-7 w-auto text-xs px-2.5 gap-1.5">
-                    <span>
-                      {milestoneFilter === "all"
-                        ? "All tasks"
-                        : milestoneFilter === "none"
-                          ? "No milestone"
-                          : milestones.find((m) => m.name === milestoneFilter)?.title ?? milestoneFilter}
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All tasks</SelectItem>
-                    <SelectItem value="none">No milestone</SelectItem>
-                    {milestones.map((m) => (
-                      <SelectItem key={m.name} value={m.name}>
-                        {m.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {milestoneFilter !== "all" && (
-                  <span className="text-xs text-muted-foreground">
-                    {filteredTasks?.length ?? 0} of {tasks?.length ?? 0} tasks
-                  </span>
+                {milestones && milestones.length > 0 && (
+                  <>
+                    <HugeiconsIcon icon={FilterIcon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
+                    <Select value={milestoneFilter} onValueChange={setMilestoneFilter}>
+                      <SelectTrigger className="h-7 w-auto text-xs px-2.5 gap-1.5">
+                        <span>
+                          {milestoneFilter === "all"
+                            ? "All tasks"
+                            : milestoneFilter === "none"
+                              ? "No milestone"
+                              : milestones.find((m) => m.name === milestoneFilter)?.title ?? milestoneFilter}
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All tasks</SelectItem>
+                        <SelectItem value="none">No milestone</SelectItem>
+                        {milestones.map((m) => (
+                          <SelectItem key={m.name} value={m.name}>
+                            {m.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {milestoneFilter !== "all" && (
+                      <span className="text-xs text-muted-foreground">
+                        {filteredTasks?.length ?? 0} of {tasks?.length ?? 0} tasks
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
-            )}
+              <Button
+                variant={showCompleted ? "secondary" : "outline"}
+                size="sm"
+                onClick={toggleShowCompleted}
+                className="h-7 gap-1.5 text-xs"
+                aria-pressed={showCompleted}
+                title={showCompleted ? "Hide completed tasks" : "Show completed tasks"}
+              >
+                <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5" />
+                {showCompleted
+                  ? "Hide completed"
+                  : `Show completed${completedCount ? ` (${completedCount})` : ""}`}
+              </Button>
+            </div>
             {tasksLoading ? (
               <div className="flex gap-4 overflow-x-auto pb-2 md:grid md:grid-cols-5 md:overflow-visible md:pb-0">
                 {Array.from({ length: 5 }).map((_, i) => (
