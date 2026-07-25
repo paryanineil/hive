@@ -19,8 +19,16 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { TASK_STATUS_COLOR, TASK_PRIORITY_VARIANT } from "@/lib/variants"
+import { useWeekStart } from "@/hooks/useWeekStart"
 import type { HiveTask } from "@/types"
 
 type CalendarMode = "month" | "week" | "day"
@@ -33,6 +41,7 @@ interface TaskCalendarProps {
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 const MODES: CalendarMode[] = ["month", "week", "day"]
 
 /**
@@ -43,6 +52,8 @@ const MODES: CalendarMode[] = ["month", "week", "day"]
 export function TaskCalendar({ tasks, onTaskClick, maxPerDay = 3 }: TaskCalendarProps) {
   const [mode, setMode] = useState<CalendarMode>("month")
   const [cursor, setCursor] = useState<Date>(() => new Date())
+  const [weekStartsOn, setWeekStartsOn] = useWeekStart()
+  const weekOpts = { weekStartsOn } as const
 
   const { tasksByDay, undated } = useMemo(() => {
     const byDay = new Map<string, HiveTask[]>()
@@ -72,16 +83,24 @@ export function TaskCalendar({ tasks, onTaskClick, maxPerDay = 3 }: TaskCalendar
     mode === "month"
       ? format(cursor, "MMMM yyyy")
       : mode === "week"
-        ? `${format(startOfWeek(cursor), "MMM d")} – ${format(endOfWeek(cursor), "MMM d, yyyy")}`
+        ? `${format(startOfWeek(cursor, weekOpts), "MMM d")} – ${format(endOfWeek(cursor, weekOpts), "MMM d, yyyy")}`
         : format(cursor, "EEEE, MMM d, yyyy")
 
   const monthDays = useMemo(
-    () => eachDayOfInterval({ start: startOfWeek(startOfMonth(cursor)), end: endOfWeek(endOfMonth(cursor)) }),
-    [cursor],
+    () => eachDayOfInterval({
+      start: startOfWeek(startOfMonth(cursor), weekOpts),
+      end: endOfWeek(endOfMonth(cursor), weekOpts),
+    }),
+    [cursor, weekStartsOn],
   )
   const weekDays = useMemo(
-    () => eachDayOfInterval({ start: startOfWeek(cursor), end: endOfWeek(cursor) }),
-    [cursor],
+    () => eachDayOfInterval({ start: startOfWeek(cursor, weekOpts), end: endOfWeek(cursor, weekOpts) }),
+    [cursor, weekStartsOn],
+  )
+  // Weekday header row rotated to begin on the chosen start day.
+  const orderedWeekdays = useMemo(
+    () => [...WEEKDAYS.slice(weekStartsOn), ...WEEKDAYS.slice(0, weekStartsOn)],
+    [weekStartsOn],
   )
 
   const chip = (task: HiveTask) => (
@@ -116,6 +135,20 @@ export function TaskCalendar({ tasks, onTaskClick, maxPerDay = 3 }: TaskCalendar
               </Button>
             ))}
           </div>
+          <Select
+            value={String(weekStartsOn)}
+            onValueChange={(v) => setWeekStartsOn(Number(v) as typeof weekStartsOn)}
+          >
+            <SelectTrigger size="sm" className="w-fit" aria-label="Week starts on">
+              <span className="text-muted-foreground">Week starts:</span>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DAY_NAMES.map((name, i) => (
+                <SelectItem key={name} value={String(i)}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button variant="outline" size="sm" onClick={goToday}>
             Today
           </Button>
@@ -132,7 +165,7 @@ export function TaskCalendar({ tasks, onTaskClick, maxPerDay = 3 }: TaskCalendar
       {mode === "month" && (
         <div className="overflow-hidden rounded-md border">
           <div className="grid grid-cols-7 border-b bg-muted/40">
-            {WEEKDAYS.map((d) => (
+            {orderedWeekdays.map((d) => (
               <div key={d} className="px-2 py-1.5 text-center text-xs font-medium text-muted-foreground">
                 {d}
               </div>
