@@ -13,14 +13,14 @@ export default defineConfig({
 		VitePWA({
 			registerType: 'autoUpdate',
 			manifest: {
-				name: 'BWH Hive',
-				short_name: 'Hive',
+				name: 'Ignition',
+				short_name: 'Ignition',
 				description: 'Project Management Solution',
 				theme_color: '#000000',
 				background_color: '#000000',
 				display: 'standalone',
-				scope: '/hive',
-				start_url: '/hive',
+				scope: '/ignition',
+				start_url: '/ignition',
 				icons: [
 					{
 						src: 'images/pwa-192x192.png',

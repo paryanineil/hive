@@ -10,7 +10,7 @@ import "./index.css"
 import App from "./App"
 
 // Site name is required for the realtime socket in Frappe v15+. It's injected onto
-// window by www/hive.html; fall back to the current host for the dev server.
+// window by www/ignition.html; fall back to the current host for the dev server.
 const siteName =
   (window as unknown as { site_name?: string }).site_name || window.location.hostname
 // socketPort is only for local dev (vite on a non-standard port); undefined in
@@ -23,7 +23,7 @@ createRoot(document.getElementById("root")!).render(
       <FrappeProvider siteName={siteName} socketPort={socketPort}>
         <ThemeProvider defaultTheme="system" storageKey="hive-ui-theme">
           <TooltipProvider>
-            <BrowserRouter basename="/hive">
+            <BrowserRouter basename="/ignition">
               <App />
               <Toaster position="top-right" />
             </BrowserRouter>

@@ -166,7 +166,7 @@ export function AppSidebar({
   return (
     <Sidebar>
       <SidebarHeader className="h-14 shrink-0 flex-row items-center border-b border-sidebar-border px-4">
-        <span className="text-lg font-bold text-sidebar-foreground">Hive</span>
+        <span className="text-lg font-bold text-sidebar-foreground">Ignition</span>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

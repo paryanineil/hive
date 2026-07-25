@@ -60,4 +60,4 @@ playwright-report/
 test-results/
 bwh_hive/public/frontend/
 bwh_hive/public/node_modules
-bwh_hive/www/hive.html
+bwh_hive/www/ignition.html

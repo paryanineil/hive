@@ -8,7 +8,7 @@
     "build": "vite build --base=/assets/bwh_hive/frontend/ && yarn copy-html-entry",
     "lint": "eslint .",
     "preview": "vite preview",
-    "copy-html-entry": "cp ../bwh_hive/public/frontend/index.html ../bwh_hive/www/hive.html"
+    "copy-html-entry": "cp ../bwh_hive/public/frontend/index.html ../bwh_hive/www/ignition.html"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",

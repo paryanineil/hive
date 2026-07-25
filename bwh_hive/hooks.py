@@ -1,5 +1,5 @@
 app_name = "bwh_hive"
-app_title = "BWH Hive"
+app_title = "Ignition"
 app_publisher = "BWH Studios"
 app_description = "Modern Project Management Software"
 app_email = "developers@buildwithhussain.com"
@@ -277,5 +277,5 @@ user_invitation = {
 sqlite_search = ["bwh_hive.search.HiveSearch"]
 
 website_route_rules = [
-	{"from_route": "/hive/<path:app_path>", "to_route": "hive"},
+	{"from_route": "/ignition/<path:app_path>", "to_route": "ignition"},
 ]

@@ -417,7 +417,7 @@ export function OnboardingDialog({
         onboarding_completed: 1,
       })
       onOpenChange(false)
-      toast.success("Welcome to Hive!")
+      toast.success("Welcome to Ignition!")
     } catch {
       // Still close even if save fails — they can redo from settings
       onOpenChange(false)
@@ -429,7 +429,7 @@ export function OnboardingDialog({
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent className="max-h-[90vh]">
           <DrawerHeader>
-            <DrawerTitle>Welcome to Hive</DrawerTitle>
+            <DrawerTitle>Welcome to Ignition</DrawerTitle>
             <DrawerDescription className="sr-only">
               Set up your workspace
             </DrawerDescription>
@@ -446,7 +446,7 @@ export function OnboardingDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg" showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle>Welcome to Hive</DialogTitle>
+          <DialogTitle>Welcome to Ignition</DialogTitle>
           <DialogDescription>
             Let's get your workspace set up in a few quick steps.
           </DialogDescription>
