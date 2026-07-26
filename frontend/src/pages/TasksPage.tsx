@@ -29,15 +29,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { LinkField } from "@/components/LinkField"
-import { TASK_STATUSES, TASK_PRIORITIES, type HiveTask, type HiveProject, type HiveMilestone, type HiveTaskAssignee, type HiveView } from "@/types"
+import { MultiSelect } from "@/components/MultiSelect"
+import { TASK_STATUSES, TASK_PRIORITIES, type HiveTask, type HiveProject, type HiveMilestone, type HiveTaskAssignee, type HiveMember, type HiveView } from "@/types"
 import {
   Empty,
   EmptyHeader,
@@ -93,10 +86,14 @@ export function TasksPage() {
 
   const viewId = searchParams.get("view_id") ?? ""
   const search = searchParams.get("q") ?? ""
-  const statusFilter = searchParams.get("status") ?? "all"
-  const priorityFilter = searchParams.get("priority") ?? "all"
-  const projectFilter = searchParams.get("project") ?? "all"
-  const assigneeFilter = searchParams.get("assignee") ?? "all"
+  const statusParam = searchParams.get("status") ?? ""
+  const priorityParam = searchParams.get("priority") ?? ""
+  const projectParam = searchParams.get("project") ?? ""
+  const assigneeParam = searchParams.get("assignee") ?? ""
+  const statusValues = statusParam ? statusParam.split(",") : []
+  const priorityValues = priorityParam ? priorityParam.split(",") : []
+  const projectValues = projectParam ? projectParam.split(",") : []
+  const assigneeValues = assigneeParam ? assigneeParam.split(",") : []
   const viewMode = (searchParams.get("view") ?? "list") as "list" | "kanban" | "calendar" | "timeline"
 
   const { data: activeView } = useFrappeGetDoc<HiveView>(
@@ -116,11 +113,20 @@ export function TasksPage() {
     }, { replace: true })
   }, [setSearchParams])
 
+  const setMultiFilter = useCallback((key: string, values: string[]) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (!values.length) next.delete(key)
+      else next.set(key, values.join(","))
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
   const setSearch = useCallback((value: string) => setFilter("q", value), [setFilter])
-  const setStatusFilter = useCallback((value: string) => setFilter("status", value), [setFilter])
-  const setPriorityFilter = useCallback((value: string) => setFilter("priority", value), [setFilter])
-  const setProjectFilter = useCallback((value: string) => setFilter("project", value), [setFilter])
-  const setAssigneeFilter = useCallback((value: string) => setFilter("assignee", value), [setFilter])
+  const setStatusValues = useCallback((v: string[]) => setMultiFilter("status", v), [setMultiFilter])
+  const setPriorityValues = useCallback((v: string[]) => setMultiFilter("priority", v), [setMultiFilter])
+  const setProjectValues = useCallback((v: string[]) => setMultiFilter("project", v), [setMultiFilter])
+  const setAssigneeValues = useCallback((v: string[]) => setMultiFilter("assignee", v), [setMultiFilter])
   const setViewMode = useCallback((value: string) => setFilter("view", value === "list" ? "" : value), [setFilter])
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -158,6 +164,15 @@ export function TasksPage() {
     {
       fields: ["name", "title"],
       limit: 100,
+    },
+  )
+
+  const { data: members } = useFrappeGetDocList<HiveMember>(
+    "Hive Member",
+    {
+      fields: ["name", "member_name"],
+      filters: [["is_active", "=", 1]],
+      limit: 200,
     },
   )
 
@@ -212,13 +227,13 @@ export function TasksPage() {
 
   const buildCurrentFilters = useCallback(() => {
     const filters: Record<string, string> = {}
-    if (statusFilter !== "all") filters.status = statusFilter
-    if (priorityFilter !== "all") filters.priority = priorityFilter
-    if (projectFilter !== "all") filters.project = projectFilter
-    if (assigneeFilter !== "all") filters.assignee = assigneeFilter
+    if (statusParam) filters.status = statusParam
+    if (priorityParam) filters.priority = priorityParam
+    if (projectParam) filters.project = projectParam
+    if (assigneeParam) filters.assignee = assigneeParam
     if (search) filters.q = search
     return filters
-  }, [statusFilter, priorityFilter, projectFilter, assigneeFilter, search])
+  }, [statusParam, priorityParam, projectParam, assigneeParam, search])
 
   const handleSaveView = useCallback(async () => {
     if (!saveViewLabel.trim()) return
@@ -289,6 +304,10 @@ export function TasksPage() {
   // Shared filter function used by both list and kanban views
   const filteredTasks = useMemo(() => {
     if (!tasks) return []
+    const statusV = statusParam ? statusParam.split(",") : []
+    const priorityV = priorityParam ? priorityParam.split(",") : []
+    const projectV = projectParam ? projectParam.split(",") : []
+    const assigneeV = assigneeParam ? assigneeParam.split(",") : []
     return tasks.filter((task) => {
       // Completed (Done) tasks are hidden across all views unless the user opts in.
       if (!showCompleted && task.status === "Done") return false
@@ -300,16 +319,16 @@ export function TasksPage() {
         const matchAssignee = (task.assigned_to ?? "").toLowerCase().includes(q)
         if (!matchName && !matchTitle && !matchProject && !matchAssignee) return false
       }
-      if (statusFilter !== "all" && task.status !== statusFilter) return false
-      if (priorityFilter !== "all" && task.priority !== priorityFilter) return false
-      if (projectFilter !== "all" && task.project !== projectFilter) return false
-      if (assigneeFilter !== "all") {
+      if (statusV.length && !statusV.includes(task.status)) return false
+      if (priorityV.length && !priorityV.includes(task.priority)) return false
+      if (projectV.length && !projectV.includes(task.project)) return false
+      if (assigneeV.length) {
         const taskAssignees = assigneesByTask[task.name] ?? []
-        if (!taskAssignees.some((a) => a.member === assigneeFilter)) return false
+        if (!taskAssignees.some((a) => assigneeV.includes(a.member))) return false
       }
       return true
     })
-  }, [tasks, showCompleted, search, statusFilter, priorityFilter, projectFilter, assigneeFilter, projectMap, assigneesByTask])
+  }, [tasks, showCompleted, search, statusParam, priorityParam, projectParam, assigneeParam, projectMap, assigneesByTask])
 
   // Count of completed tasks currently hidden (respects other active filters except the Done hide itself).
   const completedCount = useMemo(
@@ -392,7 +411,8 @@ export function TasksPage() {
   )
 
 
-  const activeFilterCount = [statusFilter, priorityFilter, projectFilter, assigneeFilter].filter(f => f !== "all").length
+  const activeFilterCount = [statusValues, priorityValues, projectValues, assigneeValues].filter((a) => a.length).length
+  const hasActiveFilters = !!(search || activeFilterCount)
 
   // Detect if the user has modified filters or view type from the saved view's originals
   const viewFiltersModified = useMemo(() => {
@@ -405,16 +425,16 @@ export function TasksPage() {
       try { return JSON.parse(activeView.filters_json || "{}") } catch { return {} }
     })()
     const current: Record<string, string> = {}
-    if (statusFilter !== "all") current.status = statusFilter
-    if (priorityFilter !== "all") current.priority = priorityFilter
-    if (projectFilter !== "all") current.project = projectFilter
-    if (assigneeFilter !== "all") current.assignee = assigneeFilter
+    if (statusParam) current.status = statusParam
+    if (priorityParam) current.priority = priorityParam
+    if (projectParam) current.project = projectParam
+    if (assigneeParam) current.assignee = assigneeParam
     if (search) current.q = search
     const savedKeys = Object.keys(saved).sort()
     const currentKeys = Object.keys(current).sort()
     if (savedKeys.length !== currentKeys.length) return true
     return savedKeys.some((k, i) => currentKeys[i] !== k || saved[k] !== current[k])
-  }, [activeView, statusFilter, priorityFilter, projectFilter, assigneeFilter, search, viewMode])
+  }, [activeView, statusParam, priorityParam, projectParam, assigneeParam, search, viewMode])
 
   return (
     <div className="space-y-6">
@@ -541,45 +561,33 @@ export function TasksPage() {
               {activeFilterCount}
             </Badge>
           )}
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-fit">
-              <span className="text-muted-foreground">Status:</span>
-              <SelectValue placeholder="All" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              {TASK_STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
-              ))}
-              <SelectItem value="Blocked">Blocked</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-            <SelectTrigger className="w-fit">
-              <span className="text-muted-foreground">Priority:</span>
-              <SelectValue placeholder="All" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              {TASK_PRIORITIES.map((p) => (
-                <SelectItem key={p} value={p}>{p}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <LinkField
-            doctype="Hive Project"
-            value={projectFilter === "all" ? "" : projectFilter}
-            onChange={(v) => setProjectFilter(v || "all")}
-            label="Project:"
-            placeholder="All"
-            filters={{ is_archived: 0 }}
+          <MultiSelect
+            label="Status:"
+            options={[...TASK_STATUSES, "Blocked"].map((s) => ({ value: s, label: s }))}
+            selected={statusValues}
+            onChange={setStatusValues}
+            searchable={false}
           />
-          <LinkField
-            doctype="Hive Member"
-            value={assigneeFilter === "all" ? "" : assigneeFilter}
-            onChange={(v) => setAssigneeFilter(v || "all")}
+          <MultiSelect
+            label="Priority:"
+            options={TASK_PRIORITIES.map((p) => ({ value: p, label: p }))}
+            selected={priorityValues}
+            onChange={setPriorityValues}
+            searchable={false}
+          />
+          <MultiSelect
+            label="Project:"
+            options={(projects ?? []).map((p) => ({ value: p.name, label: p.title || p.name }))}
+            selected={projectValues}
+            onChange={setProjectValues}
+            searchPlaceholder="Search project..."
+          />
+          <MultiSelect
             label="Assignee:"
-            placeholder="All"
+            options={(members ?? []).map((m) => ({ value: m.name, label: m.member_name || m.name }))}
+            selected={assigneeValues}
+            onChange={setAssigneeValues}
+            searchPlaceholder="Search member..."
           />
           <Button
             variant={showCompleted ? "secondary" : "outline"}
@@ -643,17 +651,17 @@ export function TasksPage() {
               <HugeiconsIcon icon={TaskDaily01Icon} strokeWidth={1.5} className="size-10 text-muted-foreground" />
             </EmptyMedia>
             <EmptyTitle>
-              {search || statusFilter !== "all" || priorityFilter !== "all" || projectFilter !== "all" || assigneeFilter !== "all"
+              {hasActiveFilters
                 ? "No tasks match your filters"
                 : "No tasks yet"}
             </EmptyTitle>
             <EmptyDescription>
-              {search || statusFilter !== "all" || priorityFilter !== "all" || projectFilter !== "all" || assigneeFilter !== "all"
+              {hasActiveFilters
                 ? "Try adjusting your search or filters."
                 : "Tasks will appear here once created in a project."}
             </EmptyDescription>
           </EmptyHeader>
-          {!(search || statusFilter !== "all" || priorityFilter !== "all" || projectFilter !== "all" || assigneeFilter !== "all") && (
+          {!(hasActiveFilters) && (
             <Button onClick={() => setCreateOpen(true)} className="mt-4">
               <HugeiconsIcon icon={Add01Icon} strokeWidth={2} data-icon="inline-start" />
               Add Task
@@ -672,7 +680,7 @@ export function TasksPage() {
           />
           <p className="text-xs text-muted-foreground">
             {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}
-            {(search || statusFilter !== "all" || priorityFilter !== "all" || projectFilter !== "all" || assigneeFilter !== "all") && " matching filters"}
+            {(hasActiveFilters) && " matching filters"}
           </p>
         </div>
       ) : viewMode === "calendar" ? (
@@ -680,7 +688,7 @@ export function TasksPage() {
           <TaskCalendar tasks={filteredTasks} onTaskClick={handleTaskClick} />
           <p className="text-xs text-muted-foreground">
             {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}
-            {(search || statusFilter !== "all" || priorityFilter !== "all" || projectFilter !== "all" || assigneeFilter !== "all") && " matching filters"}
+            {(hasActiveFilters) && " matching filters"}
           </p>
         </div>
       ) : viewMode === "timeline" ? (
@@ -688,14 +696,14 @@ export function TasksPage() {
           <TaskTimeline tasks={filteredTasks} projectTitles={projectMap} onTaskClick={handleTaskClick} />
           <p className="text-xs text-muted-foreground">
             {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}
-            {(search || statusFilter !== "all" || priorityFilter !== "all" || projectFilter !== "all" || assigneeFilter !== "all") && " matching filters"}
+            {(hasActiveFilters) && " matching filters"}
           </p>
         </div>
       ) : (
         <TaskListTable
           data={tableData}
           onRowClick={(task) => navigate(`/projects/${task.project}?tab=tasks&task=${task.name}`)}
-          countNote={(search || statusFilter !== "all" || priorityFilter !== "all" || projectFilter !== "all" || assigneeFilter !== "all") ? " matching filters" : ""}
+          countNote={(hasActiveFilters) ? " matching filters" : ""}
           onChanged={() => { tasksMutate(); callAssignees({}) }}
         />
       )}
@@ -782,14 +790,14 @@ export function TasksPage() {
                 Public — visible to all team members
               </Label>
             </div>
-            {(statusFilter !== "all" || priorityFilter !== "all" || projectFilter !== "all" || assigneeFilter !== "all" || search) && (
+            {hasActiveFilters && (
               <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground space-y-1">
                 <p className="font-medium text-foreground">Current filters:</p>
                 {search && <p>Search: {search}</p>}
-                {statusFilter !== "all" && <p>Status: {statusFilter}</p>}
-                {priorityFilter !== "all" && <p>Priority: {priorityFilter}</p>}
-                {projectFilter !== "all" && <p>Project: {projectFilter}</p>}
-                {assigneeFilter !== "all" && <p>Assignee: {assigneeFilter}</p>}
+                {statusValues.length > 0 && <p>Status: {statusValues.join(", ")}</p>}
+                {priorityValues.length > 0 && <p>Priority: {priorityValues.join(", ")}</p>}
+                {projectValues.length > 0 && <p>Project: {projectValues.map((v) => projectMap[v] ?? v).join(", ")}</p>}
+                {assigneeValues.length > 0 && <p>Assignee: {assigneeValues.map((v) => members?.find((m) => m.name === v)?.member_name ?? v).join(", ")}</p>}
               </div>
             )}
             <p className="text-xs text-muted-foreground">
