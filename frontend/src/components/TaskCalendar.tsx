@@ -55,23 +55,32 @@ export function TaskCalendar({ tasks, onTaskClick, maxPerDay = 3 }: TaskCalendar
   const [weekStartsOn, setWeekStartsOn] = useWeekStart()
   const weekOpts = { weekStartsOn } as const
 
-  const { tasksByDay, undated } = useMemo(() => {
-    const byDay = new Map<string, HiveTask[]>()
+  // A task occupies every day from its start date to its due date (inclusive).
+  // With only one of the two dates it occupies that single day; with neither it
+  // goes to the "no dates" tray. YYYY-MM-DD string compare is chronological and
+  // timezone-safe (no Date parsing needed).
+  const { spans, undated } = useMemo(() => {
+    const spans: { task: HiveTask; from: string; to: string }[] = []
     const noDate: HiveTask[] = []
     for (const task of tasks) {
-      if (!task.due_date) {
+      const start = task.start_date ? task.start_date.slice(0, 10) : null
+      const due = task.due_date ? task.due_date.slice(0, 10) : null
+      if (!start && !due) {
         noDate.push(task)
         continue
       }
-      const key = task.due_date.slice(0, 10)
-      const list = byDay.get(key)
-      if (list) list.push(task)
-      else byDay.set(key, [task])
+      let from = (start ?? due) as string
+      let to = (due ?? start) as string
+      if (from > to) [from, to] = [to, from]
+      spans.push({ task, from, to })
     }
-    return { tasksByDay: byDay, undated: noDate }
+    return { spans, undated: noDate }
   }, [tasks])
 
-  const dayTasks = (day: Date) => tasksByDay.get(format(day, "yyyy-MM-dd")) ?? []
+  const dayTasks = (day: Date) => {
+    const key = format(day, "yyyy-MM-dd")
+    return spans.filter((s) => key >= s.from && key <= s.to).map((s) => s.task)
+  }
 
   const goToday = () => setCursor(new Date())
   const goPrev = () =>
@@ -252,7 +261,7 @@ export function TaskCalendar({ tasks, onTaskClick, maxPerDay = 3 }: TaskCalendar
           </div>
           <div className="divide-y">
             {dayTasks(cursor).length === 0 ? (
-              <p className="px-3 py-8 text-center text-sm text-muted-foreground">No tasks due on this day.</p>
+              <p className="px-3 py-8 text-center text-sm text-muted-foreground">No tasks on this day.</p>
             ) : (
               dayTasks(cursor).map((task) => (
                 <button
@@ -279,7 +288,7 @@ export function TaskCalendar({ tasks, onTaskClick, maxPerDay = 3 }: TaskCalendar
       {/* Tasks with no due date */}
       {undated.length > 0 && (
         <div className="rounded-md border p-3">
-          <p className="mb-2 text-xs font-medium text-muted-foreground">No due date ({undated.length})</p>
+          <p className="mb-2 text-xs font-medium text-muted-foreground">No dates ({undated.length})</p>
           <div className="flex flex-wrap gap-1.5">
             {undated.map((task) => (
               <button
