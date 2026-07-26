@@ -4,12 +4,17 @@ import { DotLottieReact } from "@lottiefiles/dotlottie-react"
 import type { DotLottie } from "@lottiefiles/dotlottie-web"
 import { motion } from "motion/react"
 import confetti from "canvas-confetti"
-import { useCelebrationSettings, getSoundVariantSrc } from "@/hooks/useCelebrationSettings"
-
-const LOTTIE_SRC = "/assets/bwh_hive/frontend/sounds/celebration.lottie"
+import {
+  useCelebrationSettings,
+  getSoundVariantSrc,
+  getAnimationVariant,
+  type AnimationVariant,
+  type AnimationVariantConfig,
+} from "@/hooks/useCelebrationSettings"
 
 interface CelebrationContextValue {
-  celebrate: () => void
+  /** Play the celebration. Pass a variant to preview a specific cartoon (no sound). */
+  celebrate: (previewVariant?: AnimationVariant) => void
 }
 
 const CelebrationContext = createContext<CelebrationContextValue | null>(null)
@@ -20,11 +25,19 @@ export function useCelebration() {
   return ctx
 }
 
-function CelebrationOverlay({ visible }: { visible: boolean }) {
+function CelebrationOverlay({
+  visible,
+  variant,
+  animationKey,
+}: {
+  visible: boolean
+  variant: AnimationVariantConfig
+  animationKey: number
+}) {
   const lottieRef = useRef<DotLottie | null>(null)
   const [shown, setShown] = useState(false)
 
-  // Keep container visible during exit animation, then hide after it completes
+  // Keep container mounted through the exit animation, then hide.
   useEffect(() => {
     if (visible) {
       setShown(true)
@@ -34,13 +47,13 @@ function CelebrationOverlay({ visible }: { visible: boolean }) {
     }
   }, [visible, shown])
 
-  // When celebration starts, rewind and play the Lottie from frame 0
+  // Rewind + play the Lottie each time a celebration starts.
   useEffect(() => {
-    if (visible && lottieRef.current) {
+    if (visible && variant.kind === "lottie" && lottieRef.current) {
       lottieRef.current.setFrame(0)
       lottieRef.current.play()
     }
-  }, [visible])
+  }, [visible, variant.kind, animationKey])
 
   return createPortal(
     <div
@@ -56,13 +69,32 @@ function CelebrationOverlay({ visible }: { visible: boolean }) {
           : { type: "spring", stiffness: 200, damping: 26 }
         }
       >
-        <DotLottieReact
-          src={LOTTIE_SRC}
-          autoplay={false}
-          loop
-          dotLottieRefCallback={(dotLottie) => { lottieRef.current = dotLottie }}
-          style={{ width: 320, height: 320 }}
-        />
+        {variant.kind === "lottie" ? (
+          <DotLottieReact
+            key={animationKey}
+            src={variant.src}
+            autoplay={false}
+            loop
+            dotLottieRefCallback={(dotLottie) => { lottieRef.current = dotLottie }}
+            style={{ width: 320, height: 320 }}
+          />
+        ) : (
+          <div className="flex h-[320px] w-[320px] items-center justify-center select-none">
+            <motion.span
+              key={animationKey}
+              initial={{ scale: 0.2, rotate: -20 }}
+              animate={{
+                scale: [0.2, 1.25, 1],
+                rotate: [-20, 10, -6, 4, 0],
+                y: [0, -10, 0, -6, 0],
+              }}
+              transition={{ duration: 1.1, times: [0, 0.4, 0.6, 0.8, 1], repeat: Infinity, repeatDelay: 0.4 }}
+              style={{ fontSize: 200, lineHeight: 1, display: "inline-block", filter: "drop-shadow(0 8px 16px rgba(0,0,0,0.25))" }}
+            >
+              {variant.emoji}
+            </motion.span>
+          </div>
+        )}
       </motion.div>
     </div>,
     document.body,
@@ -71,40 +103,47 @@ function CelebrationOverlay({ visible }: { visible: boolean }) {
 
 export function CelebrationProvider({ children }: { children: ReactNode }) {
   const [visible, setVisible] = useState(false)
+  const [activeVariant, setActiveVariant] = useState<AnimationVariantConfig>(() => getAnimationVariant("classic"))
+  const [animationKey, setAnimationKey] = useState(0)
   const dismissRef = useRef<ReturnType<typeof setTimeout>>()
   const fadeRef = useRef<ReturnType<typeof setTimeout>>()
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const { animation: animationEnabled, sound: soundEnabled, soundVariant } = useCelebrationSettings()
+  const { animation: animationEnabled, sound: soundEnabled, soundVariant, animationVariant } = useCelebrationSettings()
 
   useEffect(() => {
     audioRef.current = new Audio(getSoundVariantSrc(soundVariant))
     audioRef.current.preload = "auto"
   }, [soundVariant])
 
-  const celebrate = useCallback(() => {
-    if (!animationEnabled && !soundEnabled) return
-    if (visible) return
+  const celebrate = useCallback((previewVariant?: AnimationVariant) => {
+    const isPreview = previewVariant !== undefined
+    const variant = getAnimationVariant(previewVariant ?? animationVariant)
 
-    if (animationEnabled) {
+    if (!isPreview) {
+      if (!animationEnabled && !soundEnabled) return
+      if (visible) return
+    }
+
+    // Animation: on real completions only when enabled; always for a preview.
+    if (isPreview || animationEnabled) {
+      setActiveVariant(variant)
+      setAnimationKey((k) => k + 1)
       setVisible(true)
 
-      // Confetti burst
       const isMobile = window.innerWidth < 768
       confetti({
         particleCount: 80,
         spread: 70,
         origin: { x: isMobile ? 0.5 : 0.25, y: 0.9 },
-        colors: ["#ff6b6b", "#feca57", "#48dbfb", "#ff9ff3", "#54a0ff", "#5f27cd"],
+        colors: [...variant.colors],
       })
 
-      // Auto-dismiss overlay after 5 seconds
       if (dismissRef.current) clearTimeout(dismissRef.current)
-      dismissRef.current = setTimeout(() => {
-        setVisible(false)
-      }, 5000)
+      dismissRef.current = setTimeout(() => setVisible(false), 5000)
     }
 
-    if (soundEnabled) {
+    // Sound: never for previews (the settings screen previews sound separately).
+    if (!isPreview && soundEnabled) {
       try {
         const audio = audioRef.current
         if (audio) {
@@ -112,7 +151,6 @@ export function CelebrationProvider({ children }: { children: ReactNode }) {
           audio.currentTime = 0
           audio.play().catch(() => {})
 
-          // Start fading out after 3s (over the last 2s)
           if (fadeRef.current) clearTimeout(fadeRef.current)
           fadeRef.current = setTimeout(() => {
             const fadeSteps = 40
@@ -132,12 +170,12 @@ export function CelebrationProvider({ children }: { children: ReactNode }) {
         // Audio playback may be blocked by browser policy — ignore
       }
     }
-  }, [visible, animationEnabled, soundEnabled])
+  }, [visible, animationEnabled, soundEnabled, animationVariant])
 
   return (
     <CelebrationContext.Provider value={{ celebrate }}>
       {children}
-      <CelebrationOverlay visible={visible} />
+      <CelebrationOverlay visible={visible} variant={activeVariant} animationKey={animationKey} />
     </CelebrationContext.Provider>
   )
 }

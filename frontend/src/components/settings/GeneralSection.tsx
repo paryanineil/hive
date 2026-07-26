@@ -25,9 +25,12 @@ import {
   notify,
   CELEBRATION_KEYS,
   SOUND_VARIANTS,
+  ANIMATION_VARIANTS,
   getSoundVariantSrc,
   type SoundVariant,
+  type AnimationVariant,
 } from "@/hooks/useCelebrationSettings"
+import { useCelebration } from "@/hooks/useTaskCelebration"
 
 interface HiveProjectType {
   name: string
@@ -39,7 +42,8 @@ interface HiveSettings {
 }
 
 export function GeneralSection() {
-  const { animation, sound, soundVariant } = useCelebrationSettings()
+  const { animation, sound, soundVariant, animationVariant } = useCelebrationSettings()
+  const { celebrate } = useCelebration()
 
   const { data: hiveSettings, mutate: mutateSettings } = useFrappeGetDoc<HiveSettings>(
     "Hive Settings",
@@ -68,6 +72,12 @@ export function GeneralSection() {
       // ignore
     }
   }, [])
+
+  const setAnimationVariant = useCallback((v: AnimationVariant) => {
+    localStorage.setItem(CELEBRATION_KEYS.ANIMATION_VARIANT_KEY, v)
+    notify()
+    celebrate(v) // preview the chosen cartoon
+  }, [celebrate])
 
   const {
     data: projectTypes,
@@ -213,6 +223,39 @@ export function GeneralSection() {
               onCheckedChange={setAnimation}
             />
           </div>
+
+          {animation && (
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="celebration-animation-variant" className="flex flex-col items-start gap-1">
+                <span className="text-sm font-medium">Cartoon</span>
+                <span className="text-xs text-muted-foreground font-normal">
+                  Pick which cartoon pops up — selecting one plays a preview
+                </span>
+              </Label>
+              <div className="flex items-center gap-2">
+                <Select value={animationVariant} onValueChange={(v) => setAnimationVariant(v as AnimationVariant)}>
+                  <SelectTrigger id="celebration-animation-variant" className="w-48">
+                    <SelectValue>
+                      {(v) => {
+                        const a = ANIMATION_VARIANTS.find((x) => x.value === v)
+                        return a ? `${a.emoji} ${a.label}` : ""
+                      }}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ANIMATION_VARIANTS.map((a) => (
+                      <SelectItem key={a.value} value={a.value}>
+                        {a.emoji}  {a.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="sm" onClick={() => celebrate(animationVariant)}>
+                  Preview
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-between gap-4">
             <Label htmlFor="celebration-sound" className="flex flex-col items-start gap-1 cursor-pointer">
