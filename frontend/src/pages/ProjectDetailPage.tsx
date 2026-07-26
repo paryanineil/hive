@@ -1063,7 +1063,7 @@ export function ProjectDetailPage() {
                 ))}
               </div>
             ) : taskView === "list" ? (
-              <TaskListTable data={projectTableData} onRowClick={handleTaskClick} hideProjectColumn />
+              <TaskListTable data={projectTableData} onRowClick={handleTaskClick} hideProjectColumn onChanged={() => mutateTasks()} />
             ) : taskView === "calendar" ? (
               <TaskCalendar tasks={filteredTasks ?? []} onTaskClick={handleTaskClick} />
             ) : taskView === "timeline" ? (

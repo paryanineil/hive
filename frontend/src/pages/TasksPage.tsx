@@ -696,6 +696,7 @@ export function TasksPage() {
           data={tableData}
           onRowClick={(task) => navigate(`/projects/${task.project}?tab=tasks&task=${task.name}`)}
           countNote={(search || statusFilter !== "all" || priorityFilter !== "all" || projectFilter !== "all" || assigneeFilter !== "all") ? " matching filters" : ""}
+          onChanged={() => { tasksMutate(); callAssignees({}) }}
         />
       )}
 

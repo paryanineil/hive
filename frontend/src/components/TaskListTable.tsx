@@ -1,8 +1,12 @@
-import { useState } from "react"
+import { useState, Fragment } from "react"
 import { format } from "date-fns"
+import { useFrappeUpdateDoc } from "frappe-react-sdk"
+import { toast } from "sonner"
 import {
   type ColumnDef,
   type SortingState,
+  type RowSelectionState,
+  type Row,
   flexRender,
   getCoreRowModel,
   getPaginationRowModel,
@@ -21,9 +25,18 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { AvatarGroup, AvatarGroupCount } from "@/components/ui/avatar"
 import { MemberAvatar } from "@/components/MemberAvatar"
 import { TASK_PRIORITY_VARIANT, TASK_SIZE_VARIANT, TASK_STATUS_COLOR, PRIORITY_ORDER } from "@/lib/variants"
+import { TASK_STATUSES } from "@/types"
 import type { HiveTask, HiveTaskAssignee } from "@/types"
 
 export interface TaskRow {
@@ -54,6 +67,27 @@ function SortHeader({ label, column }: { label: string; column: { getIsSorted: (
   )
 }
 
+const selectColumn: ColumnDef<TaskRow> = {
+  id: "select",
+  enableSorting: false,
+  header: ({ table }) => (
+    <Checkbox
+      aria-label="Select all"
+      checked={table.getIsAllRowsSelected()}
+      indeterminate={table.getIsSomeRowsSelected() && !table.getIsAllRowsSelected()}
+      onCheckedChange={(v) => table.toggleAllRowsSelected(!!v)}
+    />
+  ),
+  cell: ({ row }) => (
+    <Checkbox
+      aria-label="Select row"
+      checked={row.getIsSelected()}
+      onCheckedChange={(v) => row.toggleSelected(!!v)}
+      onClick={(e) => e.stopPropagation()}
+    />
+  ),
+}
+
 const columns: ColumnDef<TaskRow>[] = [
   {
     id: "title",
@@ -70,7 +104,6 @@ const columns: ColumnDef<TaskRow>[] = [
               icon={RepeatIcon}
               strokeWidth={2}
               className="size-3 shrink-0 text-muted-foreground"
-              title={`Recurs ${task.recurrence_frequency}`}
             />
           )}
         </div>
@@ -187,6 +220,51 @@ const columns: ColumnDef<TaskRow>[] = [
   },
 ]
 
+type GroupBy = "none" | "status" | "priority" | "project" | "milestone" | "assignee"
+
+const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "status", label: "Status" },
+  { value: "priority", label: "Priority" },
+  { value: "project", label: "Project" },
+  { value: "milestone", label: "Milestone" },
+  { value: "assignee", label: "Assignee" },
+]
+
+const GROUP_ORDER: Partial<Record<GroupBy, string[]>> = {
+  status: [...TASK_STATUSES, "Blocked"],
+  priority: ["Urgent", "High", "Medium", "Low"],
+}
+
+function groupKeyOf(groupBy: GroupBy, row: TaskRow): string {
+  const t = row.task
+  switch (groupBy) {
+    case "status": return t.status || "—"
+    case "priority": return t.priority || "—"
+    case "project": return row.projectTitle || t.project || "—"
+    case "milestone": return row.milestoneTitle || "No milestone"
+    case "assignee":
+      return row.assignees.length
+        ? row.assignees.map((a) => a.member_name || a.member).join(", ")
+        : (t.assigned_to || "Unassigned")
+    default: return ""
+  }
+}
+
+function orderGroupKeys(groupBy: GroupBy, keys: string[]): string[] {
+  const order = GROUP_ORDER[groupBy]
+  const trailing = ["Unassigned", "No milestone", "—"]
+  return [...keys].sort((a, b) => {
+    if (order) {
+      const ia = order.indexOf(a), ib = order.indexOf(b)
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+    }
+    const ta = trailing.includes(a) ? 1 : 0
+    const tb = trailing.includes(b) ? 1 : 0
+    return ta - tb || a.localeCompare(b)
+  })
+}
+
 interface TaskListTableProps {
   data: TaskRow[]
   onRowClick: (task: HiveTask) => void
@@ -194,29 +272,133 @@ interface TaskListTableProps {
   countNote?: string
   /** Hide the Project column (redundant inside a single project's view). */
   hideProjectColumn?: boolean
+  /** Called after a bulk action changes data, so the parent can refetch. */
+  onChanged?: () => void
 }
 
 /**
  * Sortable, paginated task table shared by the Tasks page and the per-project
- * Tasks tab. Row click is delegated to the parent via `onRowClick`.
+ * Tasks tab. Supports multi-select (bulk set-status / archive) and Group by.
  */
-export function TaskListTable({ data, onRowClick, countNote = "", hideProjectColumn = false }: TaskListTableProps) {
+export function TaskListTable({ data, onRowClick, countNote = "", hideProjectColumn = false, onChanged }: TaskListTableProps) {
   const [sorting, setSorting] = useState<SortingState>([{ id: "due_date", desc: false }])
-  const activeColumns = hideProjectColumn ? columns.filter((c) => c.id !== "project") : columns
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
+  const [groupBy, setGroupBy] = useState<GroupBy>("none")
+  const { updateDoc } = useFrappeUpdateDoc()
+
+  const activeColumns = [
+    selectColumn,
+    ...(hideProjectColumn ? columns.filter((c) => c.id !== "project") : columns),
+  ]
 
   const table = useReactTable({
     data,
     columns: activeColumns,
-    state: { sorting },
+    state: { sorting, rowSelection },
     onSortingChange: setSorting,
+    onRowSelectionChange: setRowSelection,
+    enableRowSelection: true,
+    getRowId: (row) => row.task.name,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     initialState: { pagination: { pageSize: 20 } },
   })
 
+  const colCount = activeColumns.length
+  const selectedRows = table.getSelectedRowModel().rows
+  const selectedCount = selectedRows.length
+
+  const runBulk = async (label: string, updates: Partial<HiveTask>, undo?: Partial<HiveTask>) => {
+    const tasks = selectedRows.map((r) => r.original.task)
+    try {
+      await Promise.all(tasks.map((t) => updateDoc("Hive Task", t.name, updates)))
+      table.resetRowSelection()
+      onChanged?.()
+      toast.success(`${label} ${tasks.length} task${tasks.length !== 1 ? "s" : ""}`, undo ? {
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            await Promise.all(tasks.map((t) => updateDoc("Hive Task", t.name, undo)))
+            onChanged?.()
+          },
+        },
+        duration: 6000,
+      } : undefined)
+    } catch {
+      toast.error(`Bulk action failed`)
+    }
+  }
+
+  const renderRow = (row: Row<TaskRow>) => (
+    <TableRow
+      key={row.id}
+      data-state={row.getIsSelected() ? "selected" : undefined}
+      className="cursor-pointer data-[state=selected]:bg-muted/50"
+      onClick={() => onRowClick(row.original.task)}
+    >
+      {row.getVisibleCells().map((cell) => (
+        <TableCell key={cell.id}>
+          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+        </TableCell>
+      ))}
+    </TableRow>
+  )
+
+  // Grouped rows (all sorted rows, no pagination), keyed + ordered.
+  const groupedSections = (() => {
+    if (groupBy === "none") return null
+    const rows = table.getSortedRowModel().rows
+    const map = new Map<string, Row<TaskRow>[]>()
+    for (const r of rows) {
+      const k = groupKeyOf(groupBy, r.original)
+      const arr = map.get(k) ?? []
+      arr.push(r)
+      map.set(k, arr)
+    }
+    return orderGroupKeys(groupBy, [...map.keys()]).map((k) => ({ key: k, rows: map.get(k)! }))
+  })()
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      {/* Toolbar: Group by + bulk actions */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Group by:</span>
+          <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
+            <SelectTrigger size="sm" className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {GROUP_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {selectedCount > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">{selectedCount} selected</span>
+            <Select value="" onValueChange={(v) => runBulk("Updated", { status: v as HiveTask["status"] }, undefined)}>
+              <SelectTrigger size="sm" className="w-36">
+                <span className="text-muted-foreground">Set status…</span>
+              </SelectTrigger>
+              <SelectContent>
+                {[...TASK_STATUSES, "Blocked"].map((s) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={() => runBulk("Archived", { is_archived: 1 }, { is_archived: 0 })}>
+              Archive
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => table.resetRowSelection()}>
+              Clear
+            </Button>
+          </div>
+        )}
+      </div>
+
       <div className="overflow-x-auto rounded-md border">
         <Table>
           <TableHeader>
@@ -233,27 +415,40 @@ export function TaskListTable({ data, onRowClick, countNote = "", hideProjectCol
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows.map((row) => (
-              <TableRow
-                key={row.id}
-                className="cursor-pointer"
-                onClick={() => onRowClick(row.original.task)}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
+            {groupedSections
+              ? groupedSections.map((section) => {
+                  const allSel = section.rows.every((r) => r.getIsSelected())
+                  const someSel = section.rows.some((r) => r.getIsSelected())
+                  return (
+                    <Fragment key={`group-${section.key}`}>
+                      <TableRow className="bg-muted/40 hover:bg-muted/40">
+                        <TableCell colSpan={colCount} className="py-1.5">
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              aria-label={`Select group ${section.key}`}
+                              checked={allSel}
+                              indeterminate={someSel && !allSel}
+                              onCheckedChange={(v) => section.rows.forEach((r) => r.toggleSelected(!!v))}
+                            />
+                            <span className="text-xs font-semibold">{section.key}</span>
+                            <Badge variant="secondary" className="text-[10px] h-5 px-1.5">{section.rows.length}</Badge>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      {section.rows.map(renderRow)}
+                    </Fragment>
+                  )
+                })
+              : table.getRowModel().rows.map(renderRow)}
           </TableBody>
         </Table>
       </div>
+
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
           {data.length} task{data.length !== 1 ? "s" : ""}{countNote}
         </p>
-        {table.getPageCount() > 1 && (
+        {groupBy === "none" && table.getPageCount() > 1 && (
           <div className="flex items-center gap-2">
             <p className="text-xs text-muted-foreground">
               Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
