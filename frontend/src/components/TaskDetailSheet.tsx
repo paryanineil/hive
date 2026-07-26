@@ -64,6 +64,7 @@ import { LazyTiptapEditor } from "@/components/LazyTiptapEditor"
 import { useUser } from "@/context/UserContext"
 import { TaskCommentsSection } from "@/components/TaskCommentsSection"
 import { TaskAttachments } from "@/components/TaskAttachments"
+import { TaskChecklist } from "@/components/TaskChecklist"
 import { LinkField } from "@/components/LinkField"
 import { AgentPanel } from "@/components/task/AgentPanel"
 import { useAgentTaskEvents } from "@/hooks/useAgentEvents"
@@ -802,6 +803,15 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
             />
           )}
         </div>
+
+        {/* Checklist — taskDoc is the full document; `task` comes from the list
+            view and doesn't include child tables. */}
+        <TaskChecklist
+          taskName={task.name}
+          items={taskDoc?.checklist ?? []}
+          readOnly={isClient}
+          onChanged={() => { mutateTaskDoc(); onUpdated() }}
+        />
 
         {/* Attachments */}
         <div className="grid gap-2">

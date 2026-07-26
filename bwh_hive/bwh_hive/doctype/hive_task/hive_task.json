@@ -24,6 +24,7 @@
   "recurring_parent",
   "pr_link",
   "description",
+  "checklist",
   "uat_section",
   "uat_status",
   "uat_approved_by",
@@ -166,6 +167,12 @@
    "fieldname": "description",
    "fieldtype": "Text Editor",
    "label": "Description"
+  },
+  {
+   "fieldname": "checklist",
+   "fieldtype": "Table",
+   "label": "Checklist",
+   "options": "Hive Task Checklist Item"
   },
   {
    "fieldname": "uat_section",

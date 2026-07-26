@@ -56,6 +56,7 @@ export interface HiveTask {
   is_internal: 0 | 1
   is_archived: 0 | 1
   description: string
+  checklist?: HiveTaskChecklistItem[]
   due_date: string | null
   start_date: string | null
   completed_on: string | null
@@ -143,6 +144,14 @@ export interface HiveTaskAssignee {
   member: string
   member_name: string
   user_image: string
+}
+
+export interface HiveTaskChecklistItem {
+  /** Present on saved rows; absent for locally-added ones until saved. */
+  name?: string
+  content: string
+  completed: 0 | 1
+  idx?: number
 }
 
 export interface HiveUpdateReaction {
