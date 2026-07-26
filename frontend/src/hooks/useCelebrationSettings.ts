@@ -5,9 +5,19 @@ const SOUND_KEY = "hive:celebration-sound"
 const SOUND_VARIANT_KEY = "hive:celebration-sound-variant"
 const ANIMATION_VARIANT_KEY = "hive:celebration-animation-variant"
 
+const SOUND_BASE = "/assets/bwh_hive/frontend/sounds"
+
 export const SOUND_VARIANTS = [
-  { value: "victory", label: "Victory Fanfare", src: "/assets/bwh_hive/frontend/sounds/victory.wav" },
-  { value: "task-complete", label: "Task Complete Ding", src: "/assets/bwh_hive/frontend/sounds/task-complete.mp3" },
+  { value: "victory", label: "Victory Fanfare", src: `${SOUND_BASE}/victory.wav` },
+  { value: "task-complete", label: "Task Complete Ding", src: `${SOUND_BASE}/task-complete.mp3` },
+  { value: "chime-ascend", label: "Level-Up Chime", src: `${SOUND_BASE}/chime-ascend.wav` },
+  { value: "success-bells", label: "Success Bells", src: `${SOUND_BASE}/success-bells.wav` },
+  { value: "fanfare-lite", label: "Mini Fanfare", src: `${SOUND_BASE}/fanfare-lite.wav` },
+  { value: "power-up", label: "Power Up", src: `${SOUND_BASE}/power-up.wav` },
+  { value: "coin", label: "Coin", src: `${SOUND_BASE}/coin.wav` },
+  { value: "sparkle", label: "Sparkle", src: `${SOUND_BASE}/sparkle.wav` },
+  { value: "marimba", label: "Marimba", src: `${SOUND_BASE}/marimba.wav` },
+  { value: "zen-bell", label: "Zen Bell", src: `${SOUND_BASE}/zen-bell.wav` },
 ] as const
 
 export type SoundVariant = (typeof SOUND_VARIANTS)[number]["value"]
