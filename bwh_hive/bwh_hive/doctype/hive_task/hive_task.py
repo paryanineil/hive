@@ -114,7 +114,10 @@ class HiveTask(Document):
 			frappe.throw(f"Cannot move task from '{old_status}' to '{self.status}'")
 
 	def _validate_dates(self):
-		if self.start_date and self.due_date and self.start_date > self.due_date:
+		# Normalise both sides: values set programmatically (e.g. by the Google
+		# Calendar sync) may be `date` objects while the other is still a string,
+		# and comparing the two raises TypeError.
+		if self.start_date and self.due_date and getdate(self.start_date) > getdate(self.due_date):
 			frappe.throw("Start date cannot be after due date")
 
 	def _validate_dependency(self):

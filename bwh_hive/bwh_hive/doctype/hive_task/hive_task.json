@@ -40,7 +40,8 @@
   "agent_spec_path",
   "agent_branch",
   "agent_last_error",
-  "agent_box_torn_down"
+  "agent_box_torn_down",
+  "calendar_event"
  ],
  "fields": [
   {
@@ -278,6 +279,16 @@
    "fieldtype": "Check",
    "label": "Agent Box Torn Down",
    "read_only": 1
+  },
+  {
+   "fieldname": "calendar_event",
+   "fieldtype": "Link",
+   "label": "Calendar Event",
+   "options": "Event",
+   "read_only": 1,
+   "hidden": 1,
+   "no_copy": 1,
+   "print_hide": 1
   }
  ],
  "grid_page_length": 50,

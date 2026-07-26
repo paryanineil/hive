@@ -41,6 +41,9 @@
   "failed_teardown_grace_hours",
   "telegram_section",
   "notifications_enabled",
+  "google_calendar_section",
+  "google_calendar_sync_enabled",
+  "google_calendar",
   "telegram_bot_token",
   "telegram_default_chat_id"
  ],
@@ -273,6 +276,26 @@
    "fieldname": "notifications_enabled",
    "fieldtype": "Check",
    "label": "Notifications Enabled"
+  },
+  {
+   "fieldname": "google_calendar_section",
+   "fieldtype": "Section Break",
+   "label": "Google Calendar"
+  },
+  {
+   "fieldname": "google_calendar_sync_enabled",
+   "fieldtype": "Check",
+   "label": "Sync Tasks with Google Calendar",
+   "default": "0",
+   "description": "Two-way sync of dated tasks with the calendar selected below."
+  },
+  {
+   "fieldname": "google_calendar",
+   "fieldtype": "Link",
+   "label": "Google Calendar",
+   "options": "Google Calendar",
+   "depends_on": "google_calendar_sync_enabled",
+   "description": "Connect a calendar first: Google Calendar list > New > Authorize."
   },
   {
    "fieldname": "telegram_bot_token",

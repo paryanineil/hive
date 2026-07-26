@@ -150,6 +150,16 @@ doc_events = {
 		"on_update": "bwh_hive.bwh_hive.orchestrator.hooks.on_todo_change",
 		"on_trash": "bwh_hive.bwh_hive.orchestrator.hooks.on_todo_change",
 	},
+	# Google Calendar sync: mirror dated tasks into Frappe Events (Frappe owns the
+	# Google side), and write Google-side date/title edits back to the task.
+	"Hive Task": {
+		"after_insert": "bwh_hive.bwh_hive.google_calendar_sync.task_to_event",
+		"on_update": "bwh_hive.bwh_hive.google_calendar_sync.task_to_event",
+		"on_trash": "bwh_hive.bwh_hive.google_calendar_sync.remove_event",
+	},
+	"Event": {
+		"on_update": "bwh_hive.bwh_hive.google_calendar_sync.event_to_task",
+	},
 }
 
 # Scheduled Tasks

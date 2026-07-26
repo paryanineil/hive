@@ -10,6 +10,7 @@ def after_install():
 	_bootstrap_system_managers()
 	_ensure_default_project_types()
 	_ensure_agent_bot()
+	_ensure_event_custom_fields()
 	frappe.db.commit()
 
 
@@ -20,7 +21,30 @@ def after_migrate():
 	_ensure_default_project_types()
 	_ensure_agent_bot()
 	_generate_missing_project_slugs()
+	_ensure_event_custom_fields()
 	frappe.db.commit()
+
+
+def _ensure_event_custom_fields():
+	"""Link a core Event back to the Hive Task it mirrors (Google Calendar sync)."""
+	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+
+	create_custom_fields(
+		{
+			"Event": [
+				{
+					"fieldname": "hive_task",
+					"label": "Hive Task",
+					"fieldtype": "Link",
+					"options": "Hive Task",
+					"read_only": 1,
+					"no_copy": 1,
+					"insert_after": "subject",
+				}
+			]
+		},
+		ignore_validate=True,
+	)
 
 
 def _ensure_roles():
