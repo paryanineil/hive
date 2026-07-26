@@ -49,8 +49,22 @@ _CTX = {"reply_to": None, "selective": False}   # per-update reply context
 
 
 # ---------------------------------------------------------------- infra
+_TOKEN_CACHE: str | None = None
+
+
 def _token() -> str | None:
-    return frappe.get_single("Hive Settings").get_password("telegram_bot_token", raise_exception=False)
+    """Bot token, read once and cached.
+
+    Re-reading it per API call would open a DB transaction before every 30s long
+    poll, pinning it for the whole poll and blocking DDL (see release_db).
+    Changing the token in Hive Settings therefore needs a bot restart.
+    """
+    global _TOKEN_CACHE
+    if _TOKEN_CACHE is None:
+        _TOKEN_CACHE = frappe.get_single("Hive Settings").get_password(
+            "telegram_bot_token", raise_exception=False
+        )
+    return _TOKEN_CACHE
 
 
 def tg(method: str, **params):
@@ -96,6 +110,20 @@ def ensure_db():
         frappe.db.sql("SELECT 1")
     except Exception:
         frappe.connect()
+
+
+def release_db():
+    """End the idle transaction between polls.
+
+    MariaDB opens a transaction on the first statement and holds it until commit
+    or rollback. A long-lived poller therefore pins a transaction indefinitely,
+    which blocks DDL (`bench migrate` fails with "Waiting for table metadata
+    lock"). Rolling back when idle keeps the connection but frees the lock.
+    """
+    try:
+        frappe.db.rollback()
+    except Exception:
+        pass
 
 
 def read_offset() -> int:
@@ -566,6 +594,8 @@ def main():
     offset = read_offset()
     while True:
         try:
+            # Don't hold a transaction open across the 30s long-poll.
+            release_db()
             resp = tg("getUpdates", offset=offset, timeout=30,
                       allowed_updates=["message", "edited_message"])
             if not resp or not resp.get("ok"):
