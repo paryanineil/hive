@@ -1190,7 +1190,7 @@ export function ProjectDetailPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete project</AlertDialogTitle>
             <AlertDialogDescription>
-              This action will delete the project and all its data. Type <span className="font-semibold text-foreground">{project?.title}</span> to confirm.
+              The project and its data will be moved to the Bin — you can restore it from there at any time. Type <span className="font-semibold text-foreground">{project?.title}</span> to confirm.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <Input

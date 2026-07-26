@@ -64,6 +64,7 @@ const navItems = [
   { to: "/projects", label: "Projects", icon: Folder01Icon, keys: ["G", "P"] },
   { to: "/tasks", label: "Tasks", icon: TaskDaily01Icon, keys: ["G", "T"] },
   { to: "/team", label: "Team", icon: UserGroup03Icon, keys: ["G", "M"] },
+  { to: "/bin", label: "Bin", icon: Delete02Icon, keys: ["G", "B"] },
 ]
 
 export function AppSidebar({

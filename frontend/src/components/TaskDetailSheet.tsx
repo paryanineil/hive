@@ -3,6 +3,16 @@ import { useShortcut } from "@/hooks/useShortcut"
 import { useFrappeUpdateDoc, useFrappePostCall, useFrappeGetDocList, useFrappeGetDoc, useFrappeGetCall } from "frappe-react-sdk"
 import { startOfDay, isBefore } from "date-fns"
 import { Spinner } from "@/components/ui/spinner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { format } from "date-fns"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -87,6 +97,7 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
   const isMobile = useIsMobile()
   const { isClient, user } = useUser()
   const { celebrate } = useCelebration()
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [status, setStatus] = useState("Backlog")
@@ -850,7 +861,8 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
         variant="outline"
         size="icon"
         className="shrink-0 text-destructive hover:text-destructive"
-        onClick={handleArchive}
+        onClick={() => setDeleteConfirmOpen(true)}
+        aria-label="Delete task"
       >
         <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />
       </Button>
@@ -918,6 +930,26 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
           </SheetFooter>
         )}
       </SheetContent>
+
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete task?</AlertDialogTitle>
+            <AlertDialogDescription>
+              “{task?.title}” will be moved to the Bin. You can restore it from there at any time.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => { setDeleteConfirmOpen(false); handleArchive() }}
+            >
+              Move to Bin
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   )
 }
