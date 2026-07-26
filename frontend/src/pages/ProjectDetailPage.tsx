@@ -16,6 +16,9 @@ import {
   Task01Icon,
   Target02Icon,
   DashboardSquare01Icon,
+  LeftToRightListBulletIcon,
+  Calendar01Icon,
+  ChartBarLineIcon,
   Idea01Icon,
   News01Icon,
   Link04Icon,
@@ -63,6 +66,9 @@ import { toast } from "sonner"
 import type { HiveProject, HiveTask, HiveMilestone, HiveTaskAssignee, HiveProjectUpdate, HiveProjectLink, HiveClient } from "@/types"
 import { TASK_STATUSES, PROJECT_STATUSES } from "@/types"
 import { TaskKanban } from "@/components/TaskKanban"
+import { TaskCalendar } from "@/components/TaskCalendar"
+import { TaskTimeline } from "@/components/TaskTimeline"
+import { TaskListTable, type TaskRow } from "@/components/TaskListTable"
 import { CreateTaskDialog } from "@/components/CreateTaskDialog"
 import { TaskDetailSheet } from "@/components/TaskDetailSheet"
 import { MilestoneSection } from "@/components/MilestoneSection"
@@ -140,6 +146,7 @@ export function ProjectDetailPage() {
   const [selectedTask, setSelectedTask] = useState<HiveTask | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [milestoneFilter, setMilestoneFilter] = useState<string>("all")
+  const [taskView, setTaskView] = useState<"list" | "kanban" | "calendar" | "timeline">("kanban")
   const { pinnedTaskNames, togglePin, isPinned } = usePinnedTasks()
   const [showCompleted, toggleShowCompleted] = useShowCompleted()
 
@@ -605,6 +612,25 @@ export function ProjectDetailPage() {
   // Assignees data
   const assigneesByTask = (assigneesResult?.message ?? EMPTY_ASSIGNEES) as Record<string, HiveTaskAssignee[]>
 
+  // Data for the list view (mirrors the Tasks page table).
+  const milestoneMap = useMemo(
+    () => Object.fromEntries((milestones ?? []).map((m) => [m.name, m.title])),
+    [milestones],
+  )
+  const projectTableData = useMemo<TaskRow[]>(
+    () => (filteredTasks ?? []).map((task) => ({
+      task,
+      projectTitle: project?.title ?? "",
+      milestoneTitle: task.milestone ? (milestoneMap[task.milestone] ?? "") : "",
+      assignees: assigneesByTask[task.name] ?? [],
+    })),
+    [filteredTasks, project, milestoneMap, assigneesByTask],
+  )
+  const projectTitles = useMemo(
+    () => (project ? { [project.name]: project.title } : {}),
+    [project],
+  )
+
   // Show skeleton while slug is resolving, project is fetching, or fetch hasn't
   // started yet (covers the gap between slug resolution and project fetch start
   // that caused a flash of "Not found" on first load — #156)
@@ -967,6 +993,20 @@ export function ProjectDetailPage() {
             {/* Milestone filter + completed toggle */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
+                <div className="flex items-center rounded-md border p-0.5">
+                  <Button variant={taskView === "list" ? "secondary" : "ghost"} size="icon" className="h-7 w-7" aria-label="List view" onClick={() => setTaskView("list")}>
+                    <HugeiconsIcon icon={LeftToRightListBulletIcon} strokeWidth={2} className="size-4" />
+                  </Button>
+                  <Button variant={taskView === "kanban" ? "secondary" : "ghost"} size="icon" className="h-7 w-7" aria-label="Kanban view" onClick={() => setTaskView("kanban")}>
+                    <HugeiconsIcon icon={DashboardSquare01Icon} strokeWidth={2} className="size-4" />
+                  </Button>
+                  <Button variant={taskView === "calendar" ? "secondary" : "ghost"} size="icon" className="h-7 w-7" aria-label="Calendar view" onClick={() => setTaskView("calendar")}>
+                    <HugeiconsIcon icon={Calendar01Icon} strokeWidth={2} className="size-4" />
+                  </Button>
+                  <Button variant={taskView === "timeline" ? "secondary" : "ghost"} size="icon" className="h-7 w-7" aria-label="Timeline view" onClick={() => setTaskView("timeline")}>
+                    <HugeiconsIcon icon={ChartBarLineIcon} strokeWidth={2} className="size-4" />
+                  </Button>
+                </div>
                 {milestones && milestones.length > 0 && (
                   <>
                     <HugeiconsIcon icon={FilterIcon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
@@ -1022,6 +1062,12 @@ export function ProjectDetailPage() {
                   </div>
                 ))}
               </div>
+            ) : taskView === "list" ? (
+              <TaskListTable data={projectTableData} onRowClick={handleTaskClick} hideProjectColumn />
+            ) : taskView === "calendar" ? (
+              <TaskCalendar tasks={filteredTasks ?? []} onTaskClick={handleTaskClick} />
+            ) : taskView === "timeline" ? (
+              <TaskTimeline tasks={filteredTasks ?? []} projectTitles={projectTitles} onTaskClick={handleTaskClick} />
             ) : (
               <TaskKanban
                 tasksByStatus={tasksByStatus}
