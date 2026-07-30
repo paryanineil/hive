@@ -382,6 +382,18 @@ export function TasksPage() {
     }
   }, [updateDoc, tasksMutate, celebrate])
 
+  // Dragging a task onto another calendar day shifts its whole span.
+  const handleReschedule = useCallback(async (
+    task: HiveTask, startDate: string | null, dueDate: string | null,
+  ) => {
+    try {
+      await updateDoc("Hive Task", task.name, { start_date: startDate, due_date: dueDate })
+      tasksMutate()
+    } catch {
+      toast.error("Failed to move task")
+    }
+  }, [updateDoc, tasksMutate])
+
   const handleTaskClick = useCallback((task: HiveTask) => {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur()
@@ -690,6 +702,7 @@ export function TasksPage() {
             onTaskClick={handleTaskClick}
             projectTitles={projectMap}
             assigneesByTask={assigneesByTask}
+            onReschedule={handleReschedule}
           />
           <p className="text-xs text-muted-foreground">
             {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}

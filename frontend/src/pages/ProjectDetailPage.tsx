@@ -396,6 +396,18 @@ export function ProjectDetailPage() {
     callAssignees({ project: id }).catch(() => {})
   }
 
+  // Dragging a task onto another calendar day shifts its whole span.
+  const handleReschedule = useCallback(async (
+    task: HiveTask, startDate: string | null, dueDate: string | null,
+  ) => {
+    try {
+      await updateDoc("Hive Task", task.name, { start_date: startDate, due_date: dueDate })
+      mutateTasks()
+    } catch {
+      toast.error("Failed to move task")
+    }
+  }, [updateDoc, mutateTasks])
+
   const handleTaskClick = useCallback((task: HiveTask) => {
     // Blur the draggable card so the sheet's focus manager doesn't
     // conflict with aria-hidden applied to the kanban board
@@ -1070,6 +1082,7 @@ export function ProjectDetailPage() {
                 onTaskClick={handleTaskClick}
                 projectTitles={projectTitles}
                 assigneesByTask={assigneesByTask}
+                onReschedule={handleReschedule}
               />
             ) : taskView === "timeline" ? (
               <TaskTimeline tasks={filteredTasks ?? []} projectTitles={projectTitles} onTaskClick={handleTaskClick} />

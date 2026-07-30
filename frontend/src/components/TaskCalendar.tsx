@@ -3,6 +3,7 @@ import {
   addDays,
   addMonths,
   addWeeks,
+  differenceInCalendarDays,
   eachDayOfInterval,
   endOfMonth,
   endOfWeek,
@@ -26,9 +27,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  useDraggable,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core"
 import { cn } from "@/lib/utils"
 import { TASK_STATUS_COLOR, TASK_PRIORITY_VARIANT } from "@/lib/variants"
 import { useWeekStart } from "@/hooks/useWeekStart"
+import { useCalendarOrder } from "@/hooks/useCalendarOrder"
 import type { HiveTask, HiveTaskAssignee } from "@/types"
 
 type CalendarMode = "month" | "week" | "day"
@@ -42,6 +55,11 @@ interface TaskCalendarProps {
   projectTitles?: Record<string, string>
   /** task name → assignees, for the "Assignee" grouping. */
   assigneesByTask?: Record<string, HiveTaskAssignee[]>
+  /**
+   * Reschedule a task after it is dragged onto another day. Receives the new
+   * dates (span length preserved). Omit to disable drag-between-days.
+   */
+  onReschedule?: (task: HiveTask, startDate: string | null, dueDate: string | null) => void | Promise<void>
 }
 
 type GroupBy = "none" | "status" | "priority" | "project" | "assignee"
@@ -69,6 +87,44 @@ const PRIORITY_COLOR: Record<string, string> = {
   Low: "bg-slate-400",
 }
 
+/** A draggable task chip. Also a drop target, so chips can be reordered onto each other. */
+function DraggableChip({
+  id, task, color, onClick,
+}: { id: string; task: HiveTask; color: string; onClick: () => void }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id })
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id })
+  return (
+    <button
+      ref={(node) => { setNodeRef(node); setDropRef(node) }}
+      type="button"
+      onClick={onClick}
+      title={task.title}
+      className={cn(
+        "flex w-full items-center gap-1.5 rounded bg-card px-1.5 py-1 text-left text-xs shadow-sm ring-1 ring-border transition-colors hover:bg-accent",
+        isDragging && "opacity-40",
+        isOver && "ring-2 ring-primary",
+      )}
+      {...listeners}
+      {...attributes}
+    >
+      <span className={cn("size-1.5 shrink-0 rounded-full", color)} />
+      <span className="truncate">{task.title}</span>
+    </button>
+  )
+}
+
+/** A day cell that accepts dropped chips. */
+function DroppableDay({
+  dayKey, className, children,
+}: { dayKey: string; className?: string; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `day:${dayKey}` })
+  return (
+    <div ref={setNodeRef} className={cn(className, isOver && "bg-primary/10 ring-1 ring-inset ring-primary/40")}>
+      {children}
+    </div>
+  )
+}
+
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 const MODES: CalendarMode[] = ["month", "week", "day"]
@@ -84,12 +140,20 @@ export function TaskCalendar({
   maxPerDay = 3,
   projectTitles = {},
   assigneesByTask = {},
+  onReschedule,
 }: TaskCalendarProps) {
   const [mode, setMode] = useState<CalendarMode>("month")
   const [cursor, setCursor] = useState<Date>(() => new Date())
   const [weekStartsOn, setWeekStartsOn] = useWeekStart()
   const [groupBy, setGroupBy] = useState<GroupBy>("none")
+  const [activeTask, setActiveTask] = useState<HiveTask | null>(null)
+  const { applyOrder, setDayOrder } = useCalendarOrder()
   const weekOpts = { weekStartsOn } as const
+
+  const sensors = useSensors(
+    // A small threshold so a plain click still opens the task.
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  )
 
   /** The group a task belongs to under the current grouping. */
   const groupKeyOf = useCallback((task: HiveTask): string => {
@@ -160,9 +224,59 @@ export function TaskCalendar({
     return { spans, undated: noDate }
   }, [tasks])
 
-  const dayTasks = (day: Date) => {
+  const dayTasks = useCallback((day: Date) => {
     const key = format(day, "yyyy-MM-dd")
-    return spans.filter((s) => key >= s.from && key <= s.to).map((s) => s.task)
+    const list = spans.filter((s) => key >= s.from && key <= s.to).map((s) => s.task)
+    if (list.length < 2) return list
+    // Apply the user's manual within-day order on top of the date sort.
+    const byName = new Map(list.map((t) => [t.name, t]))
+    return applyOrder(key, list.map((t) => t.name)).map((n) => byName.get(n)!).filter(Boolean)
+  }, [spans, applyOrder])
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const name = String(event.active.id).split("|")[1]
+    setActiveTask(spans.find((s) => s.task.name === name)?.task ?? null)
+  }
+
+  /**
+   * Chip ids are "<dayKey>|<taskName>" so we know which day a drag started
+   * from — a spanning task appears on several days, and the grabbed day is what
+   * determines the shift.
+   */
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    setActiveTask(null)
+    if (!over) return
+
+    const [fromDay, taskName] = String(active.id).split("|")
+    const overId = String(over.id)
+    const toDay = overId.startsWith("day:") ? overId.slice(4) : overId.split("|")[0]
+    if (!toDay || !taskName) return
+
+    const task = spans.find((s) => s.task.name === taskName)?.task
+    if (!task) return
+
+    if (toDay === fromDay) {
+      // Reorder within the day: move the dragged chip to the target's position.
+      const names = dayTasks(new Date(`${toDay}T00:00:00`)).map((t) => t.name)
+      const overName = overId.includes("|") ? overId.split("|")[1] : null
+      if (!overName || overName === taskName) return
+      const next = names.filter((n) => n !== taskName)
+      next.splice(next.indexOf(overName), 0, taskName)
+      setDayOrder(toDay, next)
+      return
+    }
+
+    // Moved to another day: shift the whole span by the same number of days.
+    if (!onReschedule) return
+    const delta = differenceInCalendarDays(
+      new Date(`${toDay}T00:00:00`),
+      new Date(`${fromDay}T00:00:00`),
+    )
+    if (!delta) return
+    const shift = (d: string | null) =>
+      d ? format(addDays(new Date(`${d.slice(0, 10)}T00:00:00`), delta), "yyyy-MM-dd") : null
+    onReschedule(task, shift(task.start_date), shift(task.due_date))
   }
 
   const goToday = () => setCursor(new Date())
@@ -195,17 +309,14 @@ export function TaskCalendar({
     [weekStartsOn],
   )
 
-  const chip = (task: HiveTask) => (
-    <button
-      key={task.name}
-      type="button"
+  const chip = (task: HiveTask, dayKey: string) => (
+    <DraggableChip
+      key={`${dayKey}|${task.name}`}
+      id={`${dayKey}|${task.name}`}
+      task={task}
+      color={colorFor(task)}
       onClick={() => onTaskClick(task)}
-      title={task.title}
-      className="flex w-full items-center gap-1.5 rounded bg-card px-1.5 py-1 text-left text-xs shadow-sm ring-1 ring-border transition-colors hover:bg-accent"
-    >
-      <span className={cn("size-1.5 shrink-0 rounded-full", colorFor(task))} />
-      <span className="truncate">{task.title}</span>
-    </button>
+    />
   )
 
   return (
@@ -276,6 +387,9 @@ export function TaskCalendar({
         </div>
       )}
 
+      {/* Month + week grids share one drag context: drop a chip on another
+          day to reschedule, or onto another chip to reorder within the day. */}
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       {/* Month view */}
       {mode === "month" && (
         <div className="overflow-hidden rounded-md border">
@@ -290,9 +404,11 @@ export function TaskCalendar({
             {monthDays.map((day) => {
               const list = dayTasks(day)
               const inMonth = isSameMonth(day, cursor)
+              const dayKey = format(day, "yyyy-MM-dd")
               return (
-                <div
-                  key={format(day, "yyyy-MM-dd")}
+                <DroppableDay
+                  key={dayKey}
+                  dayKey={dayKey}
                   className={cn(
                     "min-h-[104px] border-b border-r p-1.5 last:border-r-0 [&:nth-child(7n)]:border-r-0",
                     !inMonth && "bg-muted/20 text-muted-foreground",
@@ -309,12 +425,12 @@ export function TaskCalendar({
                     </span>
                   </div>
                   <div className="space-y-1">
-                    {list.slice(0, maxPerDay).map(chip)}
+                    {list.slice(0, maxPerDay).map((t) => chip(t, dayKey))}
                     {list.length > maxPerDay && (
                       <div className="px-1.5 text-[11px] text-muted-foreground">+{list.length - maxPerDay} more</div>
                     )}
                   </div>
-                </div>
+                </DroppableDay>
               )
             })}
           </div>
@@ -325,31 +441,45 @@ export function TaskCalendar({
       {mode === "week" && (
         <div className="overflow-hidden rounded-md border">
           <div className="grid grid-cols-7">
-            {weekDays.map((day) => (
-              <div key={format(day, "yyyy-MM-dd")} className="border-r p-2 last:border-r-0">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-xs font-medium text-muted-foreground">{format(day, "EEE")}</span>
-                  <span
-                    className={cn(
-                      "flex size-6 items-center justify-center rounded-full text-xs",
-                      isToday(day) && "bg-primary font-semibold text-primary-foreground",
+            {weekDays.map((day) => {
+              const dayKey = format(day, "yyyy-MM-dd")
+              const list = dayTasks(day)
+              return (
+                <DroppableDay key={dayKey} dayKey={dayKey} className="border-r p-2 last:border-r-0">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">{format(day, "EEE")}</span>
+                    <span
+                      className={cn(
+                        "flex size-6 items-center justify-center rounded-full text-xs",
+                        isToday(day) && "bg-primary font-semibold text-primary-foreground",
+                      )}
+                    >
+                      {format(day, "d")}
+                    </span>
+                  </div>
+                  <div className="max-h-[440px] space-y-1 overflow-y-auto">
+                    {list.length === 0 ? (
+                      <p className="px-1 text-[11px] text-muted-foreground/60">—</p>
+                    ) : (
+                      list.map((t) => chip(t, dayKey))
                     )}
-                  >
-                    {format(day, "d")}
-                  </span>
-                </div>
-                <div className="max-h-[440px] space-y-1 overflow-y-auto">
-                  {dayTasks(day).length === 0 ? (
-                    <p className="px-1 text-[11px] text-muted-foreground/60">—</p>
-                  ) : (
-                    dayTasks(day).map(chip)
-                  )}
-                </div>
-              </div>
-            ))}
+                  </div>
+                </DroppableDay>
+              )
+            })}
           </div>
         </div>
       )}
+
+        <DragOverlay dropAnimation={null}>
+          {activeTask ? (
+            <div className="flex items-center gap-1.5 rounded bg-card px-1.5 py-1 text-xs shadow-lg ring-1 ring-border">
+              <span className={cn("size-1.5 shrink-0 rounded-full", colorFor(activeTask))} />
+              <span className="truncate">{activeTask.title}</span>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       {/* Day view */}
       {mode === "day" && (
