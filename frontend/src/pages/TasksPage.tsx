@@ -685,7 +685,12 @@ export function TasksPage() {
         </div>
       ) : viewMode === "calendar" ? (
         <div className="space-y-2">
-          <TaskCalendar tasks={filteredTasks} onTaskClick={handleTaskClick} />
+          <TaskCalendar
+            tasks={filteredTasks}
+            onTaskClick={handleTaskClick}
+            projectTitles={projectMap}
+            assigneesByTask={assigneesByTask}
+          />
           <p className="text-xs text-muted-foreground">
             {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}
             {(hasActiveFilters) && " matching filters"}

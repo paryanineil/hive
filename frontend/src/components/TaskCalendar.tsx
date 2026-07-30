@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import {
   addDays,
   addMonths,
@@ -29,7 +29,7 @@ import {
 import { cn } from "@/lib/utils"
 import { TASK_STATUS_COLOR, TASK_PRIORITY_VARIANT } from "@/lib/variants"
 import { useWeekStart } from "@/hooks/useWeekStart"
-import type { HiveTask } from "@/types"
+import type { HiveTask, HiveTaskAssignee } from "@/types"
 
 type CalendarMode = "month" | "week" | "day"
 
@@ -38,6 +38,35 @@ interface TaskCalendarProps {
   onTaskClick: (task: HiveTask) => void
   /** How many task chips to show per day in month view before "+N more". */
   maxPerDay?: number
+  /** project name → title, for the "Project" grouping. */
+  projectTitles?: Record<string, string>
+  /** task name → assignees, for the "Assignee" grouping. */
+  assigneesByTask?: Record<string, HiveTaskAssignee[]>
+}
+
+type GroupBy = "none" | "status" | "priority" | "project" | "assignee"
+
+const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "status", label: "Status" },
+  { value: "priority", label: "Priority" },
+  { value: "project", label: "Project" },
+  { value: "assignee", label: "Assignee" },
+]
+
+/** Palette for generic groups (projects, assignees) — cycled by group index. */
+const GROUP_PALETTE = [
+  "bg-blue-500", "bg-emerald-500", "bg-amber-500", "bg-violet-500",
+  "bg-rose-500", "bg-cyan-500", "bg-lime-500", "bg-fuchsia-500",
+  "bg-orange-500", "bg-teal-500",
+]
+
+/** Status and priority have meaning, so reuse the app's semantic colours. */
+const PRIORITY_COLOR: Record<string, string> = {
+  Urgent: "bg-red-500",
+  High: "bg-orange-500",
+  Medium: "bg-yellow-500",
+  Low: "bg-slate-400",
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
@@ -49,11 +78,65 @@ const MODES: CalendarMode[] = ["month", "week", "day"]
  * date; tasks without a due date are surfaced in a tray beneath the grid so
  * they aren't silently hidden.
  */
-export function TaskCalendar({ tasks, onTaskClick, maxPerDay = 3 }: TaskCalendarProps) {
+export function TaskCalendar({
+  tasks,
+  onTaskClick,
+  maxPerDay = 3,
+  projectTitles = {},
+  assigneesByTask = {},
+}: TaskCalendarProps) {
   const [mode, setMode] = useState<CalendarMode>("month")
   const [cursor, setCursor] = useState<Date>(() => new Date())
   const [weekStartsOn, setWeekStartsOn] = useWeekStart()
+  const [groupBy, setGroupBy] = useState<GroupBy>("none")
   const weekOpts = { weekStartsOn } as const
+
+  /** The group a task belongs to under the current grouping. */
+  const groupKeyOf = useCallback((task: HiveTask): string => {
+    switch (groupBy) {
+      case "status": return task.status || "—"
+      case "priority": return task.priority || "—"
+      case "project": return projectTitles[task.project] ?? task.project ?? "—"
+      case "assignee": {
+        const list = assigneesByTask[task.name] ?? []
+        return list.length
+          ? list.map((a) => a.member_name || a.member).join(", ")
+          : (task.assigned_to || "Unassigned")
+      }
+      default: return ""
+    }
+  }, [groupBy, projectTitles, assigneesByTask])
+
+  // Distinct groups present, each mapped to a colour class (the legend).
+  const legend = useMemo(() => {
+    if (groupBy === "none") return []
+    const keys = [...new Set(tasks.map(groupKeyOf))].sort((a, b) => {
+      const order = groupBy === "status"
+        ? ["Someday", "Backlog", "To Do", "In Progress", "Done", "Blocked"]
+        : groupBy === "priority" ? ["Urgent", "High", "Medium", "Low"] : null
+      if (order) {
+        const ia = order.indexOf(a), ib = order.indexOf(b)
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+      }
+      if (a === "Unassigned") return 1
+      if (b === "Unassigned") return -1
+      return a.localeCompare(b)
+    })
+    return keys.map((key, i) => ({
+      key,
+      color: groupBy === "status"
+        ? (TASK_STATUS_COLOR[key] ?? GROUP_PALETTE[i % GROUP_PALETTE.length])
+        : groupBy === "priority"
+          ? (PRIORITY_COLOR[key] ?? GROUP_PALETTE[i % GROUP_PALETTE.length])
+          : GROUP_PALETTE[i % GROUP_PALETTE.length],
+    }))
+  }, [tasks, groupBy, groupKeyOf])
+
+  const colorFor = useCallback((task: HiveTask): string => {
+    if (groupBy === "none") return TASK_STATUS_COLOR[task.status] ?? "bg-muted-foreground/40"
+    const key = groupKeyOf(task)
+    return legend.find((l) => l.key === key)?.color ?? "bg-muted-foreground/40"
+  }, [groupBy, groupKeyOf, legend])
 
   // A task occupies every day from its start date to its due date (inclusive).
   // With only one of the two dates it occupies that single day; with neither it
@@ -120,7 +203,7 @@ export function TaskCalendar({ tasks, onTaskClick, maxPerDay = 3 }: TaskCalendar
       title={task.title}
       className="flex w-full items-center gap-1.5 rounded bg-card px-1.5 py-1 text-left text-xs shadow-sm ring-1 ring-border transition-colors hover:bg-accent"
     >
-      <span className={cn("size-1.5 shrink-0 rounded-full", TASK_STATUS_COLOR[task.status] ?? "bg-muted-foreground/40")} />
+      <span className={cn("size-1.5 shrink-0 rounded-full", colorFor(task))} />
       <span className="truncate">{task.title}</span>
     </button>
   )
@@ -158,6 +241,17 @@ export function TaskCalendar({ tasks, onTaskClick, maxPerDay = 3 }: TaskCalendar
               ))}
             </SelectContent>
           </Select>
+          <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
+            <SelectTrigger size="sm" className="w-fit" aria-label="Group by">
+              <span className="text-muted-foreground">Group by:</span>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {GROUP_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button variant="outline" size="sm" onClick={goToday}>
             Today
           </Button>
@@ -169,6 +263,18 @@ export function TaskCalendar({ tasks, onTaskClick, maxPerDay = 3 }: TaskCalendar
           </Button>
         </div>
       </div>
+
+      {/* Legend for the active grouping */}
+      {legend.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border bg-muted/20 px-3 py-2">
+          {legend.map((l) => (
+            <span key={l.key} className="flex items-center gap-1.5 text-xs">
+              <span className={cn("size-2.5 shrink-0 rounded-full", l.color)} />
+              <span className="truncate max-w-[160px]">{l.key}</span>
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Month view */}
       {mode === "month" && (
@@ -270,7 +376,7 @@ export function TaskCalendar({ tasks, onTaskClick, maxPerDay = 3 }: TaskCalendar
                   onClick={() => onTaskClick(task)}
                   className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-accent"
                 >
-                  <span className={cn("size-2 shrink-0 rounded-full", TASK_STATUS_COLOR[task.status] ?? "bg-muted-foreground/40")} />
+                  <span className={cn("size-2 shrink-0 rounded-full", colorFor(task))} />
                   <span className="min-w-0 flex-1 truncate text-sm">{task.title}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">{task.status}</span>
                   {task.priority && (
@@ -298,7 +404,7 @@ export function TaskCalendar({ tasks, onTaskClick, maxPerDay = 3 }: TaskCalendar
                 title={task.title}
                 className="flex max-w-[220px] items-center gap-1.5 rounded bg-card px-2 py-1 text-xs shadow-sm ring-1 ring-border transition-colors hover:bg-accent"
               >
-                <span className={cn("size-1.5 shrink-0 rounded-full", TASK_STATUS_COLOR[task.status] ?? "bg-muted-foreground/40")} />
+                <span className={cn("size-1.5 shrink-0 rounded-full", colorFor(task))} />
                 <span className="truncate">{task.title}</span>
               </button>
             ))}
