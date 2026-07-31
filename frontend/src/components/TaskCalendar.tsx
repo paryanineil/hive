@@ -41,7 +41,9 @@ import {
 import { cn } from "@/lib/utils"
 import { TASK_STATUS_COLOR, TASK_PRIORITY_VARIANT } from "@/lib/variants"
 import { useWeekStart } from "@/hooks/useWeekStart"
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import { useCalendarOrder } from "@/hooks/useCalendarOrder"
+import { useGroupColors, COLOR_CHOICES } from "@/hooks/useGroupColors"
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { HiveTask, HiveTaskAssignee } from "@/types"
 
@@ -152,6 +154,7 @@ export function TaskCalendar({
   // Month cells are much shorter on phones — show fewer chips before "+N more".
   const perDay = isMobile ? 2 : maxPerDay
   const { applyOrder, setDayOrder } = useCalendarOrder()
+  const { getColor, setColor, resetColor } = useGroupColors()
   const weekOpts = { weekStartsOn } as const
 
   const sensors = useSensors(
@@ -190,15 +193,16 @@ export function TaskCalendar({
       if (b === "Unassigned") return -1
       return a.localeCompare(b)
     })
-    return keys.map((key, i) => ({
-      key,
-      color: groupBy === "status"
+    return keys.map((key, i) => {
+      const fallback = groupBy === "status"
         ? (TASK_STATUS_COLOR[key] ?? GROUP_PALETTE[i % GROUP_PALETTE.length])
         : groupBy === "priority"
           ? (PRIORITY_COLOR[key] ?? GROUP_PALETTE[i % GROUP_PALETTE.length])
-          : GROUP_PALETTE[i % GROUP_PALETTE.length],
-    }))
-  }, [tasks, groupBy, groupKeyOf])
+          : GROUP_PALETTE[i % GROUP_PALETTE.length]
+      // A user-chosen colour always wins over the computed default.
+      return { key, color: getColor(groupBy, key) ?? fallback, isCustom: !!getColor(groupBy, key) }
+    })
+  }, [tasks, groupBy, groupKeyOf, getColor])
 
   const colorFor = useCallback((task: HiveTask): string => {
     if (groupBy === "none") return TASK_STATUS_COLOR[task.status] ?? "bg-muted-foreground/40"
@@ -379,14 +383,54 @@ export function TaskCalendar({
         </div>
       </div>
 
-      {/* Legend for the active grouping */}
+      {/* Legend — each entry is a colour picker for that group */}
       {legend.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border bg-muted/20 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md border bg-muted/20 px-3 py-2">
+          <span className="text-[11px] text-muted-foreground">Tap a colour to change it:</span>
           {legend.map((l) => (
-            <span key={l.key} className="flex items-center gap-1.5 text-xs">
-              <span className={cn("size-2.5 shrink-0 rounded-full", l.color)} />
-              <span className="truncate max-w-[160px]">{l.key}</span>
-            </span>
+            <Popover key={l.key}>
+              <PopoverTrigger
+                render={
+                  <button
+                    type="button"
+                    className="flex items-center gap-1.5 rounded px-1.5 py-1 text-xs transition-colors hover:bg-accent"
+                    title={`Change colour for ${l.key}`}
+                  />
+                }
+              >
+                <span className={cn("size-2.5 shrink-0 rounded-full", l.color)} />
+                <span className="max-w-[160px] truncate">{l.key}</span>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto p-2">
+                <p className="mb-2 max-w-[180px] truncate text-xs font-medium">{l.key}</p>
+                <div className="grid grid-cols-8 gap-1">
+                  {COLOR_CHOICES.map((c) => (
+                    <button
+                      key={c.value}
+                      type="button"
+                      title={c.label}
+                      aria-label={c.label}
+                      onClick={() => setColor(groupBy, l.key, c.value)}
+                      className={cn(
+                        "size-5 rounded-full ring-offset-1 ring-offset-background transition-transform hover:scale-110",
+                        c.value,
+                        l.color === c.value && "ring-2 ring-foreground",
+                      )}
+                    />
+                  ))}
+                </div>
+                {l.isCustom && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2 h-7 w-full text-xs"
+                    onClick={() => resetColor(groupBy, l.key)}
+                  >
+                    Reset to default
+                  </Button>
+                )}
+              </PopoverContent>
+            </Popover>
           ))}
         </div>
       )}
