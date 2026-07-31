@@ -42,6 +42,7 @@ import { cn } from "@/lib/utils"
 import { TASK_STATUS_COLOR, TASK_PRIORITY_VARIANT } from "@/lib/variants"
 import { useWeekStart } from "@/hooks/useWeekStart"
 import { useCalendarOrder } from "@/hooks/useCalendarOrder"
+import { useIsMobile } from "@/hooks/use-mobile"
 import type { HiveTask, HiveTaskAssignee } from "@/types"
 
 type CalendarMode = "month" | "week" | "day"
@@ -147,6 +148,9 @@ export function TaskCalendar({
   const [weekStartsOn, setWeekStartsOn] = useWeekStart()
   const [groupBy, setGroupBy] = useState<GroupBy>("none")
   const [activeTask, setActiveTask] = useState<HiveTask | null>(null)
+  const isMobile = useIsMobile()
+  // Month cells are much shorter on phones — show fewer chips before "+N more".
+  const perDay = isMobile ? 2 : maxPerDay
   const { applyOrder, setDayOrder } = useCalendarOrder()
   const weekOpts = { weekStartsOn } as const
 
@@ -343,7 +347,7 @@ export function TaskCalendar({
             onValueChange={(v) => setWeekStartsOn(Number(v) as typeof weekStartsOn)}
           >
             <SelectTrigger size="sm" className="w-fit" aria-label="Week starts on">
-              <span className="text-muted-foreground">Week starts:</span>
+              <span className="hidden text-muted-foreground sm:inline">Week starts:</span>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -354,7 +358,7 @@ export function TaskCalendar({
           </Select>
           <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
             <SelectTrigger size="sm" className="w-fit" aria-label="Group by">
-              <span className="text-muted-foreground">Group by:</span>
+              <span className="hidden text-muted-foreground sm:inline">Group by:</span>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -410,7 +414,7 @@ export function TaskCalendar({
                   key={dayKey}
                   dayKey={dayKey}
                   className={cn(
-                    "min-h-[104px] border-b border-r p-1.5 last:border-r-0 [&:nth-child(7n)]:border-r-0",
+                    "min-h-[72px] p-1 sm:min-h-[104px] sm:p-1.5 border-b border-r last:border-r-0 [&:nth-child(7n)]:border-r-0",
                     !inMonth && "bg-muted/20 text-muted-foreground",
                   )}
                 >
@@ -425,9 +429,9 @@ export function TaskCalendar({
                     </span>
                   </div>
                   <div className="space-y-1">
-                    {list.slice(0, maxPerDay).map((t) => chip(t, dayKey))}
-                    {list.length > maxPerDay && (
-                      <div className="px-1.5 text-[11px] text-muted-foreground">+{list.length - maxPerDay} more</div>
+                    {list.slice(0, perDay).map((t) => chip(t, dayKey))}
+                    {list.length > perDay && (
+                      <div className="px-1.5 text-[11px] text-muted-foreground">+{list.length - perDay}</div>
                     )}
                   </div>
                 </DroppableDay>

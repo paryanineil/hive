@@ -36,6 +36,7 @@ import {
 import { AvatarGroup, AvatarGroupCount } from "@/components/ui/avatar"
 import { MemberAvatar } from "@/components/MemberAvatar"
 import { TASK_PRIORITY_VARIANT, TASK_SIZE_VARIANT, TASK_STATUS_COLOR, PRIORITY_ORDER } from "@/lib/variants"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { TASK_STATUSES } from "@/types"
 import type { HiveTask, HiveTaskAssignee } from "@/types"
 
@@ -285,6 +286,7 @@ export function TaskListTable({ data, onRowClick, countNote = "", hideProjectCol
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [groupBy, setGroupBy] = useState<GroupBy>("none")
   const { updateDoc } = useFrappeUpdateDoc()
+  const isMobile = useIsMobile()
 
   const activeColumns = [
     selectColumn,
@@ -328,6 +330,65 @@ export function TaskListTable({ data, onRowClick, countNote = "", hideProjectCol
     } catch {
       toast.error(`Bulk action failed`)
     }
+  }
+
+  /**
+   * Phones get cards instead of the 10-column table — a horizontally scrolling
+   * table is unusable at that width. Same data, stacked and tappable.
+   */
+  const renderCard = (row: Row<TaskRow>) => {
+    const { task, projectTitle, assignees } = row.original
+    const overdue = task.due_date
+      && new Date(task.due_date) < new Date()
+      && task.status !== "Done" && task.status !== "Someday"
+    return (
+      <li
+        key={row.id}
+        data-state={row.getIsSelected() ? "selected" : undefined}
+        className="flex gap-3 border-b p-3 last:border-b-0 data-[state=selected]:bg-muted/50"
+        onClick={() => onRowClick(task)}
+      >
+        <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
+          <Checkbox
+            aria-label={`Select ${task.title}`}
+            checked={row.getIsSelected()}
+            onCheckedChange={(v) => row.toggleSelected(!!v)}
+          />
+        </div>
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex items-start gap-2">
+            <span className={`mt-1.5 size-2 shrink-0 rounded-full ${TASK_STATUS_COLOR[task.status] ?? "bg-muted-foreground/40"}`} />
+            <span className="min-w-0 flex-1 break-words text-sm font-medium">{task.title}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 pl-4">
+            <Badge variant="outline" className="h-5 px-1.5 text-[10px]">{task.status}</Badge>
+            {task.priority && (
+              <Badge variant={TASK_PRIORITY_VARIANT[task.priority] ?? "outline"} className="h-5 px-1.5 text-[10px]">
+                {task.priority}
+              </Badge>
+            )}
+            {!hideProjectColumn && projectTitle && (
+              <span className="truncate text-xs text-muted-foreground">{projectTitle}</span>
+            )}
+          </div>
+          <div className="flex items-center justify-between gap-2 pl-4">
+            <span className={`text-xs ${overdue ? "font-medium text-destructive" : "text-muted-foreground"}`}>
+              {task.due_date ? format(new Date(task.due_date), "MMM d, yyyy") : "No due date"}
+            </span>
+            {assignees.length > 0 && (
+              <AvatarGroup>
+                {assignees.slice(0, 3).map((a) => (
+                  <MemberAvatar key={a.member} size="sm" name={a.member_name || a.member} image={a.user_image} />
+                ))}
+                {assignees.length > 3 && (
+                  <AvatarGroupCount className="text-[10px]">+{assignees.length - 3}</AvatarGroupCount>
+                )}
+              </AvatarGroup>
+            )}
+          </div>
+        </div>
+      </li>
+    )
   }
 
   const renderRow = (row: Row<TaskRow>) => (
@@ -399,6 +460,33 @@ export function TaskListTable({ data, onRowClick, countNote = "", hideProjectCol
         )}
       </div>
 
+      {isMobile ? (
+        <div className="overflow-hidden rounded-md border">
+          {groupedSections ? (
+            groupedSections.map((section) => {
+              const allSel = section.rows.every((r) => r.getIsSelected())
+              const someSel = section.rows.some((r) => r.getIsSelected())
+              return (
+                <Fragment key={`m-group-${section.key}`}>
+                  <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2">
+                    <Checkbox
+                      aria-label={`Select group ${section.key}`}
+                      checked={allSel}
+                      indeterminate={someSel && !allSel}
+                      onCheckedChange={(v) => section.rows.forEach((r) => r.toggleSelected(!!v))}
+                    />
+                    <span className="text-xs font-semibold">{section.key}</span>
+                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{section.rows.length}</Badge>
+                  </div>
+                  <ul>{section.rows.map(renderCard)}</ul>
+                </Fragment>
+              )
+            })
+          ) : (
+            <ul>{table.getRowModel().rows.map(renderCard)}</ul>
+          )}
+        </div>
+      ) : (
       <div className="overflow-x-auto rounded-md border">
         <Table>
           <TableHeader>
@@ -443,6 +531,7 @@ export function TaskListTable({ data, onRowClick, countNote = "", hideProjectCol
           </TableBody>
         </Table>
       </div>
+      )}
 
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
