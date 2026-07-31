@@ -29,6 +29,9 @@ const TaskRedirectPage = lazyWithRetry(() =>
 const BinPage = lazyWithRetry(() =>
   import("@/pages/BinPage").then((m) => ({ default: m.BinPage })),
 )
+const NotesPage = lazyWithRetry(() =>
+  import("@/pages/NotesPage").then((m) => ({ default: m.NotesPage })),
+)
 
 function PageSpinner() {
   return (
@@ -79,6 +82,7 @@ export default function App() {
         <Route path="tasks" element={<Suspense fallback={<PageSpinner />}><TasksPage /></Suspense>} />
         <Route path="tasks/:id" element={<Suspense fallback={<PageSpinner />}><TaskRedirectPage /></Suspense>} />
         <Route path="team" element={<Suspense fallback={<PageSpinner />}><TeamPage /></Suspense>} />
+        <Route path="notes" element={<Suspense fallback={<PageSpinner />}><NotesPage /></Suspense>} />
         <Route path="bin" element={<Suspense fallback={<PageSpinner />}><BinPage /></Suspense>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

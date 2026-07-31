@@ -18,6 +18,7 @@ import {
   MoreHorizontalIcon,
   PencilEdit01Icon,
   Bug01Icon,
+  StickyNote01Icon,
 } from "@hugeicons/core-free-icons"
 import {
   Sidebar,
@@ -63,6 +64,7 @@ const navItems = [
   { to: "/", label: "Dashboard", icon: DashboardSquare02Icon, keys: ["G", "D"] },
   { to: "/projects", label: "Projects", icon: Folder01Icon, keys: ["G", "P"] },
   { to: "/tasks", label: "Tasks", icon: TaskDaily01Icon, keys: ["G", "T"] },
+  { to: "/notes", label: "Notes", icon: StickyNote01Icon, keys: ["G", "N"] },
   { to: "/team", label: "Team", icon: UserGroup03Icon, keys: ["G", "M"] },
   { to: "/bin", label: "Bin", icon: Delete02Icon, keys: ["G", "B"] },
 ]

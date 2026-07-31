@@ -208,3 +208,14 @@ export const PROJECT_STATUSES = ["Open", "Completed", "On Hold"] as const
 export const MILESTONE_STATUSES = ["Upcoming", "In Progress", "Completed"] as const
 export const FEATURE_REQUEST_STATUSES = ["Open", "Under Review", "Approved", "Rejected", "Converted"] as const
 export const FEATURE_REQUEST_PRIORITIES = ["Nice to Have", "Important", "Critical"] as const
+
+export interface HiveNote {
+  name: string
+  title: string
+  is_folder: 0 | 1
+  parent_note: string | null
+  icon: string | null
+  content: string | null
+  is_archived: 0 | 1
+  modified: string
+}
