@@ -16,6 +16,7 @@ import {
   FloppyDiskIcon,
   MoreHorizontalIcon,
   CheckmarkCircle02Icon,
+  Cancel01Icon,
 } from "@hugeicons/core-free-icons"
 import {
   Table,
@@ -424,6 +425,15 @@ export function TasksPage() {
 
 
   const activeFilterCount = [statusValues, priorityValues, projectValues, assigneeValues].filter((a) => a.length).length
+
+  /** Drop every filter (and the search box) in one go, keeping the current view. */
+  const clearAllFilters = useCallback(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      for (const key of ["status", "priority", "project", "assignee", "q"]) next.delete(key)
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
   const hasActiveFilters = !!(search || activeFilterCount)
 
   // Detect if the user has modified filters or view type from the saved view's originals
@@ -568,10 +578,22 @@ export function TasksPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {activeFilterCount > 0 && (
-            <Badge variant="secondary" className="gap-1">
-              <HugeiconsIcon icon={FilterIcon} strokeWidth={2} className="size-3" />
-              {activeFilterCount}
-            </Badge>
+            <>
+              <Badge variant="secondary" className="gap-1">
+                <HugeiconsIcon icon={FilterIcon} strokeWidth={2} className="size-3" />
+                {activeFilterCount}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearAllFilters}
+                className="h-9 gap-1.5 text-muted-foreground hover:text-foreground"
+                title="Clear all filters"
+              >
+                <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} className="size-3.5" />
+                Clear all
+              </Button>
+            </>
           )}
           <MultiSelect
             label="Status:"
