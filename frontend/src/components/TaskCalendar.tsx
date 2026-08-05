@@ -17,7 +17,7 @@ import {
   subWeeks,
 } from "date-fns"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
+import { ArrowLeft01Icon, ArrowRight01Icon, Alert02Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -44,6 +44,7 @@ import { useWeekStart } from "@/hooks/useWeekStart"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import { useCalendarOrder } from "@/hooks/useCalendarOrder"
 import { useGroupColors, COLOR_CHOICES } from "@/hooks/useGroupColors"
+import { getDueState } from "@/lib/dueDate"
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { HiveTask, HiveTaskAssignee } from "@/types"
 
@@ -96,22 +97,31 @@ function DraggableChip({
 }: { id: string; task: HiveTask; color: string; onClick: () => void }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id })
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id })
+  const dueState = getDueState(task.due_date, task.status)
   return (
     <button
       ref={(node) => { setNodeRef(node); setDropRef(node) }}
       type="button"
       onClick={onClick}
-      title={task.title}
+      title={dueState === "overdue" ? `${task.title} — overdue` : task.title}
       className={cn(
         "flex w-full items-center gap-1.5 rounded bg-card px-1.5 py-1 text-left text-xs shadow-sm ring-1 ring-border transition-colors hover:bg-accent",
         isDragging && "opacity-40",
         isOver && "ring-2 ring-primary",
+        // Overdue chips carry a red edge so they stand out at a glance.
+        dueState === "overdue" && "ring-red-700/60 dark:ring-red-500/60",
       )}
       {...listeners}
       {...attributes}
     >
-      <span className={cn("size-1.5 shrink-0 rounded-full", color)} />
-      <span className="truncate">{task.title}</span>
+      {dueState === "overdue" ? (
+        <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="size-3 shrink-0 text-red-700 dark:text-red-400" />
+      ) : (
+        <span className={cn("size-1.5 shrink-0 rounded-full", color)} />
+      )}
+      <span className={cn("truncate", dueState === "overdue" && "text-red-700 dark:text-red-400 font-medium")}>
+        {task.title}
+      </span>
     </button>
   )
 }

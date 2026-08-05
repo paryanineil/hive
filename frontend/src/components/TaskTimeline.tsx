@@ -10,6 +10,9 @@ import {
 } from "date-fns"
 import { cn } from "@/lib/utils"
 import { TASK_STATUS_COLOR } from "@/lib/variants"
+import { getDueState } from "@/lib/dueDate"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { Alert02Icon } from "@hugeicons/core-free-icons"
 import type { HiveTask } from "@/types"
 
 interface TaskTimelineProps {
@@ -137,13 +140,20 @@ export function TaskTimeline({ tasks, projectTitles, onTaskClick }: TaskTimeline
                         <button
                           type="button"
                           onClick={() => onTaskClick(task)}
-                          title={`${task.title} · ${format(start, "MMM d")} – ${format(end, "MMM d")}`}
+                          title={`${task.title} · ${format(start, "MMM d")} – ${format(end, "MMM d")}${
+                            getDueState(task.due_date, task.status) === "overdue" ? " · overdue" : ""
+                          }`}
                           className={cn(
-                            "absolute top-1/2 flex h-5 -translate-y-1/2 items-center overflow-hidden rounded px-1.5 text-[11px] font-medium text-white shadow-sm transition-opacity hover:opacity-90",
-                            TASK_STATUS_COLOR[task.status] ?? "bg-muted-foreground",
+                            "absolute top-1/2 flex h-5 -translate-y-1/2 items-center gap-1 overflow-hidden rounded px-1.5 text-[11px] font-medium text-white shadow-sm transition-opacity hover:opacity-90",
+                            getDueState(task.due_date, task.status) === "overdue"
+                              ? "bg-red-700 ring-1 ring-red-400"
+                              : TASK_STATUS_COLOR[task.status] ?? "bg-muted-foreground",
                           )}
                           style={{ left: left + 2, width: Math.max(width - 4, COL_W - 4) }}
                         >
+                          {getDueState(task.due_date, task.status) === "overdue" && (
+                            <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="size-3 shrink-0" />
+                          )}
                           <span className="truncate">{task.title}</span>
                         </button>
                       </div>

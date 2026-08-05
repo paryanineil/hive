@@ -14,7 +14,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowUp01Icon, ArrowDown01Icon, SortingIcon, RepeatIcon } from "@hugeicons/core-free-icons"
+import { ArrowUp01Icon, ArrowDown01Icon, SortingIcon, RepeatIcon, Alert02Icon } from "@hugeicons/core-free-icons"
 import {
   Table,
   TableBody,
@@ -37,6 +37,8 @@ import { AvatarGroup, AvatarGroupCount } from "@/components/ui/avatar"
 import { MemberAvatar } from "@/components/MemberAvatar"
 import { TASK_PRIORITY_VARIANT, TASK_SIZE_VARIANT, TASK_STATUS_COLOR, PRIORITY_ORDER } from "@/lib/variants"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { getDueState, DUE_TEXT_CLASS } from "@/lib/dueDate"
+import { cn } from "@/lib/utils"
 import { TASK_STATUSES } from "@/types"
 import type { HiveTask, HiveTaskAssignee } from "@/types"
 
@@ -184,10 +186,14 @@ const columns: ColumnDef<TaskRow>[] = [
     cell: ({ row }) => {
       const { task } = row.original
       if (!task.due_date) return <span className="text-muted-foreground">-</span>
-      const isOverdue = new Date(task.due_date) < new Date() && task.status !== "Done" && task.status !== "Someday"
+      const state = getDueState(task.due_date, task.status)
       return (
-        <span className={isOverdue ? "text-destructive font-medium" : "text-muted-foreground"}>
+        <span className={cn("inline-flex items-center gap-1 whitespace-nowrap", DUE_TEXT_CLASS[state])}>
+          {state === "overdue" && (
+            <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="size-3.5 shrink-0" />
+          )}
           {format(new Date(task.due_date), "MMM d, yyyy")}
+          {state === "today" && <span className="text-[10px] font-medium">· Today</span>}
         </span>
       )
     },
@@ -338,9 +344,7 @@ export function TaskListTable({ data, onRowClick, countNote = "", hideProjectCol
    */
   const renderCard = (row: Row<TaskRow>) => {
     const { task, projectTitle, assignees } = row.original
-    const overdue = task.due_date
-      && new Date(task.due_date) < new Date()
-      && task.status !== "Done" && task.status !== "Someday"
+    const dueState = getDueState(task.due_date, task.status)
     return (
       <li
         key={row.id}
@@ -359,6 +363,13 @@ export function TaskListTable({ data, onRowClick, countNote = "", hideProjectCol
           <div className="flex items-start gap-2">
             <span className={`mt-1.5 size-2 shrink-0 rounded-full ${TASK_STATUS_COLOR[task.status] ?? "bg-muted-foreground/40"}`} />
             <span className="min-w-0 flex-1 break-words text-sm font-medium">{task.title}</span>
+            {dueState === "overdue" && (
+              <HugeiconsIcon
+                icon={Alert02Icon}
+                strokeWidth={2}
+                className="mt-0.5 size-4 shrink-0 text-red-700 dark:text-red-400"
+              />
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-1.5 pl-4">
             <Badge variant="outline" className="h-5 px-1.5 text-[10px]">{task.status}</Badge>
@@ -372,8 +383,10 @@ export function TaskListTable({ data, onRowClick, countNote = "", hideProjectCol
             )}
           </div>
           <div className="flex items-center justify-between gap-2 pl-4">
-            <span className={`text-xs ${overdue ? "font-medium text-destructive" : "text-muted-foreground"}`}>
+            <span className={cn("text-xs", DUE_TEXT_CLASS[dueState])}>
               {task.due_date ? format(new Date(task.due_date), "MMM d, yyyy") : "No due date"}
+              {dueState === "today" && " · Today"}
+              {dueState === "overdue" && " · Overdue"}
             </span>
             {assignees.length > 0 && (
               <AvatarGroup>

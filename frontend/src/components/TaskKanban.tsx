@@ -13,13 +13,14 @@ import { useDroppable } from "@dnd-kit/core"
 import { useDraggable } from "@dnd-kit/core"
 import { format } from "date-fns"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Calendar03Icon, GitBranchIcon, LinkBackwardIcon, PinIcon, PinOffIcon, RepeatIcon } from "@hugeicons/core-free-icons"
+import { Calendar03Icon, GitBranchIcon, LinkBackwardIcon, PinIcon, PinOffIcon, RepeatIcon, Alert02Icon } from "@hugeicons/core-free-icons"
 import { Card, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AvatarGroup, AvatarGroupCount } from "@/components/ui/avatar"
 import { MemberAvatar } from "@/components/MemberAvatar"
 import { TASK_STATUSES, type HiveTask, type HiveTaskAssignee } from "@/types"
 import { TASK_PRIORITY_VARIANT, TASK_SIZE_VARIANT } from "@/lib/variants"
+import { getDueState, DUE_TEXT_CLASS } from "@/lib/dueDate"
 
 // Lifted state: eliminates hasClient / taskMap / onTaskClick prop drilling
 // through KanbanColumn → DraggableTaskCard → TaskCard (4 levels)
@@ -239,7 +240,7 @@ function DraggableTaskCard({
 
 const TaskCard = memo(function TaskCard({ task, isDragOverlay, assignees }: { task: HiveTask; isDragOverlay?: boolean; assignees?: HiveTaskAssignee[] }) {
   const { hasClient, taskMap, pinnedTaskNames, onTogglePin } = use(KanbanContext)
-  const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== "Done" && task.status !== "Someday"
+  const dueState = getDueState(task.due_date, task.status)
   const isPinned = pinnedTaskNames?.includes(task.name) ?? false
 
   // Use new assignees if available, fall back to legacy assigned_to
@@ -329,13 +330,14 @@ const TaskCard = memo(function TaskCard({ task, isDragOverlay, assignees }: { ta
         <div className="flex items-center justify-between mt-0.5">
           <div className="flex items-center gap-1.5">
             {task.due_date && (
-              <span
-                className={`flex items-center gap-1 text-[11px] ${
-                  isOverdue ? "text-destructive font-medium" : "text-muted-foreground"
-                }`}
-              >
-                <HugeiconsIcon icon={Calendar03Icon} strokeWidth={2} className="size-3" />
+              <span className={`flex items-center gap-1 text-[11px] ${DUE_TEXT_CLASS[dueState]}`}>
+                <HugeiconsIcon
+                  icon={dueState === "overdue" ? Alert02Icon : Calendar03Icon}
+                  strokeWidth={2}
+                  className="size-3"
+                />
                 {format(new Date(task.due_date), "MMM d")}
+                {dueState === "today" && " · Today"}
               </span>
             )}
           </div>
