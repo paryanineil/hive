@@ -321,6 +321,24 @@ export function TaskCalendar({
     () => eachDayOfInterval({ start: startOfWeek(cursor, weekOpts), end: endOfWeek(cursor, weekOpts) }),
     [cursor, weekStartsOn],
   )
+  /**
+   * Overdue tasks whose span falls entirely outside the dates on screen — in a
+   * week view an item due last week simply has no column, so without this it
+   * disappears until you navigate back. Surfaced in a tray beneath the grid.
+   */
+  const hiddenOverdue = useMemo(() => {
+    const days = mode === "month" ? monthDays : mode === "week" ? weekDays : [cursor]
+    if (!days.length) return []
+    const from = format(days[0], "yyyy-MM-dd")
+    const to = format(days[days.length - 1], "yyyy-MM-dd")
+    return spans
+      .filter((s) => getDueState(s.task.due_date, s.task.status) === "overdue")
+      // Drop anything already rendered in a visible day cell.
+      .filter((s) => s.to < from || s.from > to)
+      .map((s) => s.task)
+      .sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""))
+  }, [spans, mode, monthDays, weekDays, cursor])
+
   // Weekday header row rotated to begin on the chosen start day.
   const orderedWeekdays = useMemo(
     () => [...WEEKDAYS.slice(weekStartsOn), ...WEEKDAYS.slice(0, weekStartsOn)],
@@ -594,6 +612,36 @@ export function TaskCalendar({
               >
                 <span className={cn("size-1.5 shrink-0 rounded-full", colorFor(task))} />
                 <span className="truncate">{task.title}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Overdue tasks that fall outside the dates currently on screen */}
+      {hiddenOverdue.length > 0 && (
+        <div className="rounded-md border border-red-700/40 bg-red-700/5 p-3 dark:border-red-500/40">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-red-700 dark:text-red-400">
+            <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="size-3.5" />
+            Overdue ({hiddenOverdue.length}) — not shown in this {mode}
+          </p>
+          {/* Can be a long list (every past-due task), so cap the height. */}
+          <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+            {hiddenOverdue.map((task) => (
+              <button
+                key={task.name}
+                type="button"
+                onClick={() => onTaskClick(task)}
+                title={`${task.title} — due ${task.due_date}`}
+                className="flex max-w-[240px] items-center gap-1.5 rounded bg-card px-2 py-1 text-xs shadow-sm ring-1 ring-red-700/40 transition-colors hover:bg-accent dark:ring-red-500/40"
+              >
+                <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="size-3 shrink-0 text-red-700 dark:text-red-400" />
+                <span className="truncate font-medium text-red-700 dark:text-red-400">{task.title}</span>
+                {task.due_date && (
+                  <span className="shrink-0 text-[10px] text-muted-foreground">
+                    {format(new Date(`${task.due_date.slice(0, 10)}T00:00:00`), "MMM d")}
+                  </span>
+                )}
               </button>
             ))}
           </div>
