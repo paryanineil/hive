@@ -531,6 +531,19 @@ function DatePickerField({
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
           <Calendar mode="single" selected={date} onSelect={(d) => { onSelect(d); setOpen(false) }} />
+          {date && (
+            <div className="border-t p-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-full justify-center text-xs text-muted-foreground"
+                onClick={() => { onSelect(undefined); setOpen(false) }}
+              >
+                Clear date
+              </Button>
+            </div>
+          )}
         </PopoverContent>
       </Popover>
     </div>

@@ -59,6 +59,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command"
 import { Calendar } from "@/components/ui/calendar"
+import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { LazyTiptapEditor } from "@/components/LazyTiptapEditor"
 import { useUser } from "@/context/UserContext"
@@ -967,28 +968,61 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
 function DatePicker({
   date,
   onSelect,
+  disabled,
 }: {
   date: Date | undefined
   onSelect: (date: Date | undefined) => void
+  disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <Button variant="outline" className="w-full justify-start text-left font-normal" />
-        }
-      >
-        <HugeiconsIcon icon={Calendar03Icon} strokeWidth={2} className="mr-2 size-4" />
-        {date ? format(date, "MMM d, yyyy") : <span className="text-muted-foreground">Pick a date</span>}
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          mode="single"
-          selected={date}
-          onSelect={(d) => { onSelect(d); setOpen(false) }}
-        />
-      </PopoverContent>
-    </Popover>
+    <div className="relative">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          render={
+            <Button
+              variant="outline"
+              disabled={disabled}
+              // Room for the clear button so a long date doesn't sit under it.
+              className={cn("w-full justify-start text-left font-normal", date && "pr-9")}
+            />
+          }
+        >
+          <HugeiconsIcon icon={Calendar03Icon} strokeWidth={2} className="mr-2 size-4" />
+          {date ? format(date, "MMM d, yyyy") : <span className="text-muted-foreground">Pick a date</span>}
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            selected={date}
+            onSelect={(d) => { onSelect(d); setOpen(false) }}
+          />
+          {date && (
+            <div className="border-t p-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-center text-xs text-muted-foreground"
+                onClick={() => { onSelect(undefined); setOpen(false) }}
+              >
+                Clear date
+              </Button>
+            </div>
+          )}
+        </PopoverContent>
+      </Popover>
+      {date && !disabled && (
+        // Inline ✕ so a date can be removed without opening the calendar.
+        <button
+          type="button"
+          aria-label="Remove date"
+          title="Remove date"
+          onClick={(e) => { e.stopPropagation(); onSelect(undefined) }}
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} className="size-3.5" />
+        </button>
+      )}
+    </div>
   )
 }
