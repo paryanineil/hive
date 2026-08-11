@@ -3,7 +3,6 @@ import { useFrappeGetDocList } from "frappe-react-sdk"
 import { format } from "date-fns"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  Calendar03Icon,
   UserAdd01Icon,
   Cancel02Icon,
 } from "@hugeicons/core-free-icons"
@@ -29,7 +28,7 @@ import {
 } from "@/components/ui/select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command"
-import { Calendar } from "@/components/ui/calendar"
+import { DatePickerField as SharedDatePicker } from "@/components/DatePickerField"
 import { LinkField } from "@/components/LinkField"
 import { TASK_PRIORITIES, TASK_RECURRENCE_FREQUENCIES, TASK_STATUSES, type HiveMember } from "@/types"
 import { useUser } from "@/context/UserContext"
@@ -512,40 +511,11 @@ function DatePickerField({
   onSelect: (date: Date | undefined) => void
   label: string
 }) {
-  const [open, setOpen] = useState(false)
+  // Thin label wrapper around the shared picker (quick presets + typed dates).
   return (
     <div className="grid gap-2">
       <Label>{label}</Label>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger
-          render={
-            <Button type="button" variant="outline" className="w-full justify-start text-left font-normal" />
-          }
-        >
-          <HugeiconsIcon icon={Calendar03Icon} strokeWidth={2} className="mr-2 size-4" />
-          {date ? (
-            format(date, "MMM d, yyyy")
-          ) : (
-            <span className="text-muted-foreground">Pick date</span>
-          )}
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar mode="single" selected={date} onSelect={(d) => { onSelect(d); setOpen(false) }} />
-          {date && (
-            <div className="border-t p-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="w-full justify-center text-xs text-muted-foreground"
-                onClick={() => { onSelect(undefined); setOpen(false) }}
-              >
-                Clear date
-              </Button>
-            </div>
-          )}
-        </PopoverContent>
-      </Popover>
+      <SharedDatePicker date={date} onSelect={onSelect} placeholder="Pick date" />
     </div>
   )
 }
