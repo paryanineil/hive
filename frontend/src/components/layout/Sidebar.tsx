@@ -1,6 +1,6 @@
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useMemo, useEffect } from "react"
 import { NavLink, useLocation, useNavigate } from "react-router"
-import { useFrappeAuth, useFrappeGetDocList, useFrappeDeleteDoc, useFrappeUpdateDoc } from "frappe-react-sdk"
+import { useFrappeAuth, useFrappeGetDocList, useFrappeDeleteDoc, useFrappeUpdateDoc, useFrappeGetCall } from "frappe-react-sdk"
 import { toast } from "sonner"
 import { LazyEmojiPicker } from "@/components/LazyEmojiPicker"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -12,6 +12,11 @@ import {
   Settings01Icon,
   LogoutIcon,
   Sun02Icon,
+  Alert02Icon,
+  StarIcon,
+  Calendar01Icon,
+  UserCircleIcon,
+  CheckmarkCircle02Icon,
   Moon02Icon,
   ArrowUp01Icon,
   Delete02Icon,
@@ -57,8 +62,22 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Button } from "@/components/ui/button"
 import { MemberAvatar } from "@/components/MemberAvatar"
 import { useUser } from "@/context/UserContext"
+import { cn } from "@/lib/utils"
 import { useTheme } from "@/components/theme-provider"
 import { Kbd } from "@/components/ui/kbd"
+
+/**
+ * Saved filters over the Tasks page. Each links to /tasks with the query params
+ * the page already understands, so there's no separate routing to maintain.
+ */
+const smartLists = [
+  { key: "my_day", label: "My Day", icon: Sun02Icon, to: "/tasks?due=today" },
+  { key: "overdue", label: "Overdue", icon: Alert02Icon, to: "/tasks?due=overdue" },
+  { key: "important", label: "Important", icon: StarIcon, to: "/tasks?priority=High,Urgent" },
+  { key: "planned", label: "Planned", icon: Calendar01Icon, to: "/tasks?due=planned" },
+  { key: "assigned_to_me", label: "Assigned to me", icon: UserCircleIcon, to: "/tasks?assignee=__me__" },
+  { key: "completed", label: "Completed", icon: CheckmarkCircle02Icon, to: "/tasks?status=Done" },
+] as const
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: DashboardSquare02Icon, keys: ["G", "D"] },
@@ -146,6 +165,25 @@ export function AppSidebar({
     [location.search],
   )
 
+  // One call for every smart-list badge, refreshed when the route changes so
+  // counts follow along after completing or rescheduling something.
+  const { data: countsData, mutate: mutateCounts } = useFrappeGetCall<{
+    message: Record<string, number>
+  }>("bwh_hive.bwh_hive.api.get_smart_list_counts", undefined, "smart-list-counts")
+  const counts = countsData?.message
+  useEffect(() => { mutateCounts() }, [location.key, mutateCounts])
+
+  /** Resolve the "assigned to me" placeholder to the current user's member id. */
+  const resolvedLists = useMemo(
+    () => smartLists.map((l) => ({
+      ...l,
+      to: l.to.replace("__me__", encodeURIComponent(user?.email ?? "")),
+    })),
+    [user?.email],
+  )
+
+  const currentQuery = location.search
+
   const viewLinks = useMemo(() => {
     return views.map((view) => {
       const filters = (() => {
@@ -229,6 +267,42 @@ export function AppSidebar({
                 </SidebarMenuButton>
               </SidebarMenuItem>
               )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        {/* Smart lists — saved filters over Tasks, with live counts */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Lists</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {resolvedLists.map((list) => {
+                const count = counts?.[list.key] ?? 0
+                const isActive = location.pathname === "/tasks"
+                  && !currentViewId
+                  && currentQuery === list.to.slice(list.to.indexOf("?"))
+                return (
+                  <SidebarMenuItem key={list.key}>
+                    <SidebarMenuButton
+                      isActive={isActive}
+                      render={<NavLink to={list.to} onClick={() => setOpenMobile(false)} />}
+                      tooltip={list.label}
+                    >
+                      <HugeiconsIcon icon={list.icon} strokeWidth={2} className="size-5" />
+                      <span>{list.label}</span>
+                      {count > 0 && (
+                        <span
+                          className={cn(
+                            "ml-auto text-xs tabular-nums group-data-[collapsible=icon]:hidden",
+                            list.key === "overdue" ? "font-semibold text-red-700 dark:text-red-400" : "text-muted-foreground",
+                          )}
+                        >
+                          {count}
+                        </span>
+                      )}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

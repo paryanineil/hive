@@ -1015,3 +1015,29 @@ def resolved_prompts(project: str | None = None):
 	from bwh_hive.bwh_hive.agent_api import resolve_prompts
 
 	return resolve_prompts(project)
+
+
+@frappe.whitelist()
+def get_smart_list_counts():
+	"""Badge counts for the sidebar's smart lists.
+
+	One call instead of a query per badge, since the sidebar is always mounted.
+	"Overdue" matches the frontend's rule (due strictly before today, excluding
+	Done/Someday) so the badge and the filtered list can't disagree.
+	"""
+	user = frappe.session.user
+	today = nowdate()
+	open_states = ["Done", "Someday"]
+
+	def count(**filters):
+		return frappe.db.count("Hive Task", {"is_archived": 0, **filters})
+
+	return {
+		"my_day": count(due_date=today, status=["not in", open_states]),
+		"overdue": count(due_date=["<", today], status=["not in", open_states]),
+		"important": count(priority=["in", ["High", "Urgent"]], status=["not in", open_states]),
+		"planned": count(due_date=["is", "set"], status=["not in", open_states]),
+		"assigned_to_me": count(_assign=["like", f"%{user}%"], status=["not in", open_states]),
+		"all": count(status=["not in", ["Done"]]),
+		"completed": count(status="Done"),
+	}

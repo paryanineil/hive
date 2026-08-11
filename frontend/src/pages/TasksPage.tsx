@@ -75,6 +75,7 @@ import { TaskDetailSheet } from "@/components/TaskDetailSheet"
 import { usePinnedTasks } from "@/context/PinnedTasksContext"
 import { useCelebration } from "@/hooks/useTaskCelebration"
 import { useShowCompleted } from "@/hooks/useShowCompleted"
+import { getDueState } from "@/lib/dueDate"
 
 
 const EMPTY_ASSIGNEES: Record<string, HiveTaskAssignee[]> = {}
@@ -91,6 +92,7 @@ export function TasksPage() {
   const priorityParam = searchParams.get("priority") ?? ""
   const projectParam = searchParams.get("project") ?? ""
   const assigneeParam = searchParams.get("assignee") ?? ""
+  const dueParam = searchParams.get("due") ?? ""
   const statusValues = statusParam ? statusParam.split(",") : []
   const priorityValues = priorityParam ? priorityParam.split(",") : []
   const projectValues = projectParam ? projectParam.split(",") : []
@@ -310,8 +312,16 @@ export function TasksPage() {
     const projectV = projectParam ? projectParam.split(",") : []
     const assigneeV = assigneeParam ? assigneeParam.split(",") : []
     return tasks.filter((task) => {
-      // Completed (Done) tasks are hidden across all views unless the user opts in.
-      if (!showCompleted && task.status === "Done") return false
+      // Completed (Done) tasks are hidden across all views unless the user opts
+      // in — or explicitly filters for them, e.g. the Completed smart list.
+      if (!showCompleted && task.status === "Done" && !statusV.includes("Done")) return false
+      // Smart-list due filters (?due=today|overdue|planned).
+      if (dueParam) {
+        const state = getDueState(task.due_date, task.status)
+        if (dueParam === "today" && state !== "today") return false
+        if (dueParam === "overdue" && state !== "overdue") return false
+        if (dueParam === "planned" && !task.due_date) return false
+      }
       if (search) {
         const q = search.toLowerCase()
         const matchName = task.name.toLowerCase().includes(q)
@@ -329,7 +339,7 @@ export function TasksPage() {
       }
       return true
     })
-  }, [tasks, showCompleted, search, statusParam, priorityParam, projectParam, assigneeParam, projectMap, assigneesByTask])
+  }, [tasks, showCompleted, search, statusParam, priorityParam, projectParam, assigneeParam, dueParam, projectMap, assigneesByTask])
 
   // Count of completed tasks currently hidden (respects other active filters except the Done hide itself).
   const completedCount = useMemo(
@@ -430,7 +440,7 @@ export function TasksPage() {
   const clearAllFilters = useCallback(() => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
-      for (const key of ["status", "priority", "project", "assignee", "q"]) next.delete(key)
+      for (const key of ["status", "priority", "project", "assignee", "q", "due"]) next.delete(key)
       return next
     }, { replace: true })
   }, [setSearchParams])
