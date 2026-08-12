@@ -111,7 +111,7 @@ export function CreateProjectDialog({ open, onOpenChange, onSubmit }: CreateProj
               </Select>
               {visibility === "Private" && (
                 <p className="text-xs text-muted-foreground">
-                  Only you will be able to see this project and its tasks.
+                  Only you and the members you add to this project will see it and its tasks.
                 </p>
               )}
             </div>

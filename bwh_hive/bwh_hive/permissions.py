@@ -20,10 +20,28 @@ def _is_hive_client() -> bool:
 	)
 
 
+def _shared_with_user_subquery(user_escaped: str) -> str:
+	"""Projects the user has been added to via the project's Members table.
+
+	Being listed as a member is what shares a private project — otherwise
+	"private" would mean owner-only and there'd be no way to collaborate on one.
+	`Hive Member.name` is the user id, so the child row's `member` compares
+	directly against the session user.
+	"""
+	return (
+		f"SELECT `parent` FROM `tabHive Project Member` "
+		f"WHERE `parenttype` = 'Hive Project' AND `member` = {user_escaped}"
+	)
+
+
 def _private_project_condition(table: str, user: str) -> str:
-	"""Return SQL condition that hides other users' private projects."""
+	"""Return SQL condition that hides private projects the user isn't part of."""
 	user_escaped = frappe.db.escape(user)
-	return f"(`{table}`.`is_private` = 0 OR `{table}`.`owner` = {user_escaped})"
+	return (
+		f"(`{table}`.`is_private` = 0 "
+		f"OR `{table}`.`owner` = {user_escaped} "
+		f"OR `{table}`.`name` IN ({_shared_with_user_subquery(user_escaped)}))"
+	)
 
 
 def project_query(user: str | None) -> str:
@@ -46,11 +64,13 @@ def project_query(user: str | None) -> str:
 
 
 def _private_task_condition(user: str) -> str:
-	"""Return SQL condition that hides tasks belonging to other users' private projects."""
+	"""Return SQL condition that hides tasks in private projects the user isn't part of."""
 	user_escaped = frappe.db.escape(user)
 	return (
 		f"`tabHive Task`.`project` NOT IN "
-		f"(SELECT `name` FROM `tabHive Project` WHERE `is_private` = 1 AND `owner` != {user_escaped})"
+		f"(SELECT `name` FROM `tabHive Project` WHERE `is_private` = 1 "
+		f"AND `owner` != {user_escaped} "
+		f"AND `name` NOT IN ({_shared_with_user_subquery(user_escaped)}))"
 	)
 
 
@@ -78,7 +98,9 @@ def _private_project_subquery_condition(table: str, project_field: str, user: st
 	user_escaped = frappe.db.escape(user)
 	return (
 		f"`{table}`.`{project_field}` NOT IN "
-		f"(SELECT `name` FROM `tabHive Project` WHERE `is_private` = 1 AND `owner` != {user_escaped})"
+		f"(SELECT `name` FROM `tabHive Project` WHERE `is_private` = 1 "
+		f"AND `owner` != {user_escaped} "
+		f"AND `name` NOT IN ({_shared_with_user_subquery(user_escaped)}))"
 	)
 
 
@@ -157,9 +179,11 @@ def project_has_permission(doc, ptype: str | None = None, user: str | None = Non
 	if not user:
 		user = frappe.session.user
 
-	# Private projects: only the owner can access
+	# Private projects: the owner, plus anyone added to the Members table.
 	if doc.is_private and doc.owner != user:
-		return False
+		shared_with = {m.member for m in (doc.get("members") or [])}
+		if user not in shared_with:
+			return False
 
 	# Client users: can only access projects linked to their client org
 	roles = frappe.get_roles(user)
