@@ -29,6 +29,8 @@ import {
   Delete02Icon,
   GitBranchIcon,
   SourceCodeIcon,
+  LockIcon,
+  UserGroupIcon,
   CheckmarkCircle02Icon,
 } from "@hugeicons/core-free-icons"
 import { Badge } from "@/components/ui/badge"
@@ -478,6 +480,21 @@ export function ProjectDetailPage() {
     }
   }
 
+  const handleVisibilityChange = async (value: string) => {
+    const isPrivate = value === "Private"
+    try {
+      await updateDoc("Hive Project", id!, { is_private: isPrivate ? 1 : 0 })
+      mutateProject()
+      toast.success(
+        isPrivate
+          ? "Now private — only you and the project members can see it"
+          : "Now public — visible to the whole team",
+      )
+    } catch {
+      toast.error("Failed to update visibility")
+    }
+  }
+
   const handleTypeChange = async (value: string) => {
     try {
       await updateDoc("Hive Project", id!, { project_type: value || null })
@@ -723,6 +740,32 @@ export function ProjectDetailPage() {
                     {PROJECT_STATUSES.map((s) => (
                       <SelectItem key={s} value={s}>{s}</SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {/* Visibility — changeable after creation; private is shared with project members */}
+              {!isClient && (
+                <Select
+                  value={project.is_private ? "Private" : "Public"}
+                  onValueChange={handleVisibilityChange}
+                >
+                  <SelectTrigger
+                    className="h-5 w-auto gap-1 rounded-full px-2.5 text-[11px] font-medium"
+                    aria-label="Project visibility"
+                    title={project.is_private
+                      ? "Private — only you and the project members"
+                      : "Public — visible to the whole team"}
+                  >
+                    <HugeiconsIcon
+                      icon={project.is_private ? LockIcon : UserGroupIcon}
+                      strokeWidth={2}
+                      className="size-3"
+                    />
+                    {project.is_private ? "Private" : "Public"}
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Public">Public — whole team</SelectItem>
+                    <SelectItem value="Private">Private — me + members</SelectItem>
                   </SelectContent>
                 </Select>
               )}
