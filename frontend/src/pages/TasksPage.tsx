@@ -80,6 +80,9 @@ import { getDueState } from "@/lib/dueDate"
 
 const EMPTY_ASSIGNEES: Record<string, HiveTaskAssignee[]> = {}
 
+/** Sentinel for the "no assignee" choice in the assignee filter. */
+const UNASSIGNED = "__unassigned__"
+
 
 
 export function TasksPage() {
@@ -335,7 +338,14 @@ export function TasksPage() {
       if (projectV.length && !projectV.includes(task.project)) return false
       if (assigneeV.length) {
         const taskAssignees = assigneesByTask[task.name] ?? []
-        if (!taskAssignees.some((a) => assigneeV.includes(a.member))) return false
+        // Named to avoid shadowing the outer `members` (the Hive Member list).
+        const memberValues = assigneeV.filter((v) => v !== UNASSIGNED)
+        // Selecting "Unassigned" alongside people ORs them, like the other filters.
+        const matchesUnassigned = assigneeV.includes(UNASSIGNED)
+          && taskAssignees.length === 0 && !task.assigned_to
+        const matchesMember = memberValues.length > 0
+          && taskAssignees.some((a) => memberValues.includes(a.member))
+        if (!matchesUnassigned && !matchesMember) return false
       }
       return true
     })
@@ -628,7 +638,10 @@ export function TasksPage() {
           />
           <MultiSelect
             label="Assignee:"
-            options={(members ?? []).map((m) => ({ value: m.name, label: m.member_name || m.name }))}
+            options={[
+              { value: UNASSIGNED, label: "Unassigned" },
+              ...(members ?? []).map((m) => ({ value: m.name, label: m.member_name || m.name })),
+            ]}
             selected={assigneeValues}
             onChange={setAssigneeValues}
             searchPlaceholder="Search member..."
@@ -847,7 +860,7 @@ export function TasksPage() {
                 {statusValues.length > 0 && <p>Status: {statusValues.join(", ")}</p>}
                 {priorityValues.length > 0 && <p>Priority: {priorityValues.join(", ")}</p>}
                 {projectValues.length > 0 && <p>Project: {projectValues.map((v) => projectMap[v] ?? v).join(", ")}</p>}
-                {assigneeValues.length > 0 && <p>Assignee: {assigneeValues.map((v) => members?.find((m) => m.name === v)?.member_name ?? v).join(", ")}</p>}
+                {assigneeValues.length > 0 && <p>Assignee: {assigneeValues.map((v) => v === UNASSIGNED ? "Unassigned" : (members?.find((m) => m.name === v)?.member_name ?? v)).join(", ")}</p>}
               </div>
             )}
             <p className="text-xs text-muted-foreground">
