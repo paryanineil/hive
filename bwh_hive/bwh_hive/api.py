@@ -1041,3 +1041,37 @@ def get_smart_list_counts():
 		"all": count(status=["not in", ["Done"]]),
 		"completed": count(status="Done"),
 	}
+
+
+@frappe.whitelist()
+def get_project_members():
+	"""Return members grouped by project name, for the project cards.
+
+	Child tables don't come back with a normal list query, so this resolves them
+	in one call rather than a request per project.
+	"""
+	rows = frappe.get_all(
+		"Hive Project Member",
+		filters={"parenttype": "Hive Project"},
+		fields=["parent", "member", "role"],
+		limit_page_length=0,
+	)
+	if not rows:
+		return {}
+
+	lookup = {
+		m.name: m
+		for m in frappe.get_all("Hive Member", fields=["name", "member_name", "user_image"])
+	}
+	grouped: dict[str, list[dict]] = {}
+	for row in rows:
+		info = lookup.get(row.member)
+		grouped.setdefault(row.parent, []).append(
+			{
+				"member": row.member,
+				"member_name": (info.member_name if info else None) or row.member,
+				"user_image": info.user_image if info else None,
+				"role": row.role,
+			}
+		)
+	return grouped

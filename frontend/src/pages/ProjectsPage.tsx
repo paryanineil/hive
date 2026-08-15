@@ -18,6 +18,8 @@ import {
 import { PROJECT_STATUSES, type HiveProject } from "@/types"
 import { PROJECT_STATUS_VARIANT } from "@/lib/variants"
 import { useUser } from "@/context/UserContext"
+import { MemberAvatar } from "@/components/MemberAvatar"
+import { AvatarGroup, AvatarGroupCount } from "@/components/ui/avatar"
 import { Toggle } from "@/components/ui/toggle"
 import {
   Empty,
@@ -29,6 +31,12 @@ import {
 
 export function ProjectsPage() {
   const { openCreateProject } = useOutletContext<{ openCreateProject: () => void }>()
+  // Members per project, so a private card can show who it's shared with.
+  const { data: membersData } = useFrappeGetCall<{
+    message: Record<string, { member: string; member_name: string; user_image: string | null; role: string }[]>
+  }>("bwh_hive.bwh_hive.api.get_project_members")
+  const membersByProject = membersData?.message ?? {}
+
   const { isClient } = useUser()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState(
@@ -212,6 +220,38 @@ export function ProjectsPage() {
                         <Badge variant="outline">{project.client}</Badge>
                       )}
                     </CardDescription>
+                    {/* Private projects: show who they're shared with. */}
+                    {project.is_private === 1 && (() => {
+                      const shared = membersByProject[project.name] ?? []
+                      return (
+                        <div className="mt-2 flex items-center gap-2">
+                          {shared.length === 0 ? (
+                            <span className="text-xs text-muted-foreground">Only you</span>
+                          ) : (
+                            <>
+                              <AvatarGroup>
+                                {shared.slice(0, 4).map((m) => (
+                                  <MemberAvatar
+                                    key={m.member}
+                                    size="sm"
+                                    name={m.member_name || m.member}
+                                    image={m.user_image ?? undefined}
+                                  />
+                                ))}
+                                {shared.length > 4 && (
+                                  <AvatarGroupCount className="text-[10px]">
+                                    +{shared.length - 4}
+                                  </AvatarGroupCount>
+                                )}
+                              </AvatarGroup>
+                              <span className="truncate text-xs text-muted-foreground">
+                                {shared.map((m) => m.member_name || m.member).join(", ")}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </CardHeader>
                   {project.description && (
                     <CardContent>
