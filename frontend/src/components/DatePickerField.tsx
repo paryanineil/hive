@@ -141,7 +141,11 @@ export function DatePickerField({
             )}
           </div>
 
-          <div className="p-1">
+          <div className="border-t">
+            <Calendar mode="single" selected={date} onSelect={(d) => choose(d)} />
+          </div>
+
+          <div className="border-t p-1">
             {quick.map((q) => (
               <button
                 key={q.label}
@@ -154,10 +158,6 @@ export function DatePickerField({
                 <span className="text-xs text-muted-foreground">{q.hint}</span>
               </button>
             ))}
-          </div>
-
-          <div className="border-t">
-            <Calendar mode="single" selected={date} onSelect={(d) => choose(d)} />
           </div>
 
           {date && (
