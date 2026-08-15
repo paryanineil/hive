@@ -37,6 +37,16 @@ export function ProjectsPage() {
   }>("bwh_hive.bwh_hive.api.get_project_members")
   const membersByProject = membersData?.message ?? {}
 
+  // Hive Member.name is the user id, so this doubles as an owner lookup.
+  const { data: allMembers } = useFrappeGetDocList<{ name: string; member_name: string; user_image: string }>(
+    "Hive Member",
+    { fields: ["name", "member_name", "user_image"], limit: 200 },
+  )
+  const memberLookup = useMemo(
+    () => Object.fromEntries((allMembers ?? []).map((m) => [m.name, m])),
+    [allMembers],
+  )
+
   const { isClient } = useUser()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState(
@@ -74,7 +84,7 @@ export function ProjectsPage() {
   )
 
   const { data, isLoading } = useFrappeGetDocList<HiveProject>("Hive Project", {
-    fields: ["name", "title", "slug", "status", "project_type", "client", "description", "is_private", "creation", "modified"],
+    fields: ["name", "title", "slug", "status", "project_type", "client", "description", "is_private", "owner", "creation", "modified"],
     filters: [["is_archived", "=", 0]],
     orderBy: { field: "modified", order: "desc" },
     limit: 100,
@@ -220,33 +230,45 @@ export function ProjectsPage() {
                         <Badge variant="outline">{project.client}</Badge>
                       )}
                     </CardDescription>
-                    {/* Private projects: show who they're shared with. */}
-                    {project.is_private === 1 && (() => {
+                    {/* Owner, plus who a private project is shared with. */}
+                    {(() => {
+                      const owner = memberLookup[project.owner]
+                      const ownerName = owner?.member_name || project.owner
                       const shared = membersByProject[project.name] ?? []
                       return (
-                        <div className="mt-2 flex items-center gap-2">
-                          {shared.length === 0 ? (
-                            <span className="text-xs text-muted-foreground">Only you</span>
-                          ) : (
+                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                            <MemberAvatar size="sm" name={ownerName} image={owner?.user_image} />
+                            <span className="truncate">{ownerName}</span>
+                            <span className="shrink-0 text-muted-foreground/70">· owner</span>
+                          </span>
+                          {project.is_private === 1 && (
                             <>
-                              <AvatarGroup>
-                                {shared.slice(0, 4).map((m) => (
-                                  <MemberAvatar
-                                    key={m.member}
-                                    size="sm"
-                                    name={m.member_name || m.member}
-                                    image={m.user_image ?? undefined}
-                                  />
-                                ))}
-                                {shared.length > 4 && (
-                                  <AvatarGroupCount className="text-[10px]">
-                                    +{shared.length - 4}
-                                  </AvatarGroupCount>
-                                )}
-                              </AvatarGroup>
-                              <span className="truncate text-xs text-muted-foreground">
-                                {shared.map((m) => m.member_name || m.member).join(", ")}
-                              </span>
+                              <span className="text-muted-foreground/40">|</span>
+                              {shared.length === 0 ? (
+                                <span className="text-xs text-muted-foreground">Not shared</span>
+                              ) : (
+                                <span className="flex min-w-0 items-center gap-1.5">
+                                  <AvatarGroup>
+                                    {shared.slice(0, 4).map((m) => (
+                                      <MemberAvatar
+                                        key={m.member}
+                                        size="sm"
+                                        name={m.member_name || m.member}
+                                        image={m.user_image ?? undefined}
+                                      />
+                                    ))}
+                                    {shared.length > 4 && (
+                                      <AvatarGroupCount className="text-[10px]">
+                                        +{shared.length - 4}
+                                      </AvatarGroupCount>
+                                    )}
+                                  </AvatarGroup>
+                                  <span className="truncate text-xs text-muted-foreground">
+                                    {shared.map((m) => m.member_name || m.member).join(", ")}
+                                  </span>
+                                </span>
+                              )}
                             </>
                           )}
                         </div>
