@@ -200,6 +200,16 @@ const columns: ColumnDef<TaskRow>[] = [
     },
   },
   {
+    id: "created",
+    accessorFn: (row) => row.task.creation ?? "",
+    header: ({ column }) => <SortHeader label="Created" column={column} />,
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap text-muted-foreground">
+        {row.original.task.creation ? format(new Date(row.original.task.creation), "MMM d, yyyy") : "-"}
+      </span>
+    ),
+  },
+  {
     id: "assignees",
     header: "Assignees",
     cell: ({ row }) => {
