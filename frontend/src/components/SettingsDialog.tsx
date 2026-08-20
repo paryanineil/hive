@@ -1,6 +1,7 @@
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Settings01Icon,
+  CheckmarkCircle02Icon,
   UserGroup03Icon,
   UserCircleIcon,
   Building06Icon,
@@ -26,6 +27,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { useUser } from "@/context/UserContext"
 import { ProfileSection } from "@/components/settings/ProfileSection"
 import { GeneralSection } from "@/components/settings/GeneralSection"
+import { ChecklistTemplatesSection } from "@/components/settings/ChecklistTemplatesSection"
 import { MembersSection } from "@/components/settings/MembersSection"
 import { ClientsSection } from "@/components/settings/ClientsSection"
 import { GitHubSection } from "@/components/settings/GitHubSection"
@@ -34,6 +36,7 @@ import { AgentSection } from "@/components/settings/AgentSection"
 const allSections = [
   { id: "profile", label: "Profile", icon: UserCircleIcon, teamOnly: false },
   { id: "general", label: "General", icon: Settings01Icon, teamOnly: true },
+  { id: "checklists", label: "Checklists", icon: CheckmarkCircle02Icon, teamOnly: true },
   { id: "members", label: "Members", icon: UserGroup03Icon, teamOnly: true },
   { id: "clients", label: "Clients", icon: Building06Icon, teamOnly: true },
   { id: "github", label: "GitHub", icon: GitBranchIcon, teamOnly: true },
@@ -124,6 +127,9 @@ function SettingsContent({
               <TabsContent value="general" className="flex flex-col m-0">
                 <GeneralSection />
               </TabsContent>
+              <TabsContent value="checklists" className="flex flex-col m-0">
+                <ChecklistTemplatesSection />
+              </TabsContent>
               <TabsContent value="members" className="flex flex-col m-0">
                 <MembersSection />
               </TabsContent>
@@ -148,6 +154,9 @@ function SettingsContent({
             <>
               <TabsContent value="general" className="flex flex-1 flex-col overflow-hidden m-0">
                 <GeneralSection />
+              </TabsContent>
+              <TabsContent value="checklists" className="flex flex-1 flex-col overflow-hidden m-0">
+                <ChecklistTemplatesSection />
               </TabsContent>
               <TabsContent value="members" className="flex flex-1 flex-col overflow-hidden m-0">
                 <MembersSection />

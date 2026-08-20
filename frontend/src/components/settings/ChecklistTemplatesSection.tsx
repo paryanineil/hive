@@ -92,7 +92,7 @@ export function ChecklistTemplatesSection() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex-1 space-y-4 overflow-y-auto p-4 md:p-6">
       <div className="flex items-start justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold">Checklist Templates</h3>
