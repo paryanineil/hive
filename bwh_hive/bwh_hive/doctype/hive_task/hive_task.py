@@ -94,6 +94,7 @@ class HiveTask(Document):
 
 	def validate(self):
 		self._validate_status_transition()
+		self._validate_checklist_complete()
 		self._validate_dates()
 		self._validate_dependency()
 		self._set_completed_on()
@@ -112,6 +113,24 @@ class HiveTask(Document):
 		allowed = VALID_TRANSITIONS.get(old_status, set())
 		if self.status not in allowed:
 			frappe.throw(f"Cannot move task from '{old_status}' to '{self.status}'")
+
+	def _validate_checklist_complete(self):
+		"""A task with open checklist items cannot be marked Done.
+
+		Runs on every save where status lands on Done (not just transitions), so
+		un-ticking an item and setting Done in the same edit is also caught.
+		"""
+		if self.status != "Done":
+			return
+		if self.is_new() is False and self.get_db_value("status") == "Done":
+			# Already Done and staying Done — editing other fields is fine.
+			return
+		remaining = [row for row in (self.checklist or []) if not row.completed]
+		if remaining:
+			frappe.throw(
+				f"Complete the checklist before marking this task as Done "
+				f"({len(remaining)} of {len(self.checklist)} item{'s' if len(remaining) != 1 else ''} remaining)"
+			)
 
 	def _validate_dates(self):
 		# Normalise both sides: values set programmatically (e.g. by the Google
@@ -185,6 +204,10 @@ class HiveTask(Document):
 				"recurring_parent": parent_name,
 			}
 		)
+		# Carry the checklist over, reset to unticked — each occurrence has to
+		# work through (and complete) the same steps before it can be Done.
+		for row in self.checklist or []:
+			new_task.append("checklist", {"content": row.content, "completed": 0})
 		new_task.flags.recurrence_spawned = True
 		new_task.insert(ignore_permissions=True)
 

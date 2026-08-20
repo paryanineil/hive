@@ -59,6 +59,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command"
 import { DatePickerField } from "@/components/DatePickerField"
 import { toast } from "sonner"
+import { getFrappeErrorMessage } from "@/lib/frappeError"
 import { LazyTiptapEditor } from "@/components/LazyTiptapEditor"
 import { useUser } from "@/context/UserContext"
 import { TaskCommentsSection } from "@/components/TaskCommentsSection"
@@ -285,7 +286,15 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
 
   if (!task) return null
 
+  const checklistRemaining = (taskDoc?.checklist ?? []).filter((i) => !i.completed).length
+
   const handleStatusChange = (newStatus: string) => {
+    // Guard here too so the user gets an instant explanation instead of a
+    // failed save — the backend enforces the same rule authoritatively.
+    if (newStatus === "Done" && checklistRemaining > 0) {
+      toast.error(`Complete the checklist first — ${checklistRemaining} item${checklistRemaining !== 1 ? "s" : ""} remaining`)
+      return
+    }
     setStatus(newStatus)
     if (newStatus === "Done" && !completedOn) {
       setCompletedOn(new Date())
@@ -337,8 +346,8 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
         toast.success("Task updated")
       }
       onUpdated()
-    } catch {
-      toast.error("Failed to save task")
+    } catch (err) {
+      toast.error(getFrappeErrorMessage(err, "Failed to save task"))
       if (silent) setAutosaveStatus("idle")
     } finally {
       setSaving(false)
@@ -492,7 +501,11 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
                 </SelectTrigger>
                 <SelectContent>
                   {TASK_STATUSES.map((s) => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                    <SelectItem key={s} value={s}>
+                      {s === "Done" && checklistRemaining > 0
+                        ? `Done (${checklistRemaining} checklist item${checklistRemaining !== 1 ? "s" : ""} left)`
+                        : s}
+                    </SelectItem>
                   ))}
                   <SelectItem value="Blocked">Blocked</SelectItem>
                 </SelectContent>

@@ -2,6 +2,7 @@ import { useState, Fragment } from "react"
 import { format } from "date-fns"
 import { useFrappeUpdateDoc } from "frappe-react-sdk"
 import { toast } from "sonner"
+import { getFrappeErrorMessage } from "@/lib/frappeError"
 import {
   type ColumnDef,
   type SortingState,
@@ -333,8 +334,11 @@ export function TaskListTable({ data, onRowClick, countNote = "", hideProjectCol
         },
         duration: 6000,
       } : undefined)
-    } catch {
-      toast.error(`Bulk action failed`)
+    } catch (err) {
+      // Partial failures land here too (e.g. one task blocked by its checklist);
+      // refetch so the rows that did save aren't shown stale.
+      onChanged?.()
+      toast.error(getFrappeErrorMessage(err, "Bulk action failed"))
     }
   }
 

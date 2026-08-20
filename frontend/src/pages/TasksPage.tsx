@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from "react"
 import { useFrappeGetDocList, useFrappeGetDoc, useFrappePostCall, useFrappeCreateDoc, useFrappeUpdateDoc, useSWRConfig } from "frappe-react-sdk"
 import { useNavigate, useSearchParams, Link } from "react-router"
 import { toast } from "sonner"
+import { getFrappeErrorMessage } from "@/lib/frappeError"
 import { LazyEmojiPicker } from "@/components/LazyEmojiPicker"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -398,8 +399,8 @@ export function TasksPage() {
         { optimisticData: optimistic, rollbackOnError: true, revalidate: true },
       )
       if (newStatus === "Done") celebrate()
-    } catch {
-      toast.error("Failed to update task status")
+    } catch (err) {
+      toast.error(getFrappeErrorMessage(err, "Failed to update task status"))
     }
   }, [updateDoc, tasksMutate, celebrate])
 

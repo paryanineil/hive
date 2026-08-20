@@ -65,6 +65,7 @@ import {
   CommandItem,
 } from "@/components/ui/command"
 import { toast } from "sonner"
+import { getFrappeErrorMessage } from "@/lib/frappeError"
 import type { HiveProject, HiveTask, HiveMilestone, HiveTaskAssignee, HiveProjectUpdate, HiveProjectLink, HiveClient } from "@/types"
 import { TASK_STATUSES, PROJECT_STATUSES } from "@/types"
 import { TaskKanban } from "@/components/TaskKanban"
@@ -354,8 +355,8 @@ export function ProjectDetailPage() {
         { optimisticData: optimistic, rollbackOnError: true, revalidate: true },
       )
       if (newStatus === "Done") celebrate()
-    } catch {
-      toast.error("Failed to update task status")
+    } catch (err) {
+      toast.error(getFrappeErrorMessage(err, "Failed to update task status"))
     }
   }, [updateDoc, mutateTasks, celebrate])
 
