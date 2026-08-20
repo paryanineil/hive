@@ -6,9 +6,12 @@ const STORAGE_KEY = "hive:week-start"
 export type WeekStart = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
 function read(): WeekStart {
-  if (typeof window === "undefined") return 0
-  const v = parseInt(window.localStorage.getItem(STORAGE_KEY) ?? "0", 10)
-  return (v >= 0 && v <= 6 ? v : 0) as WeekStart
+  // Default to Monday; an explicit saved choice always wins.
+  if (typeof window === "undefined") return 1
+  const raw = window.localStorage.getItem(STORAGE_KEY)
+  if (raw === null) return 1
+  const v = parseInt(raw, 10)
+  return (v >= 0 && v <= 6 ? v : 1) as WeekStart
 }
 
 /**

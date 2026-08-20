@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
+import { useWeekStart } from "@/hooks/useWeekStart"
 
 /**
  * Parse a typed date. Accepts natural shorthand ("today", "next fri") and the
@@ -82,6 +83,7 @@ export function DatePickerField({
   asButtonType = "button",
 }: DatePickerFieldProps) {
   const [open, setOpen] = useState(false)
+  const [weekStartsOn] = useWeekStart()
   const [typed, setTyped] = useState("")
   const [typedError, setTypedError] = useState(false)
 
@@ -142,7 +144,7 @@ export function DatePickerField({
           </div>
 
           <div className="border-t">
-            <Calendar mode="single" selected={date} onSelect={(d) => choose(d)} />
+            <Calendar mode="single" weekStartsOn={weekStartsOn} selected={date} onSelect={(d) => choose(d)} />
           </div>
 
           <div className="border-t p-1">
