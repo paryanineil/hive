@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { ChecklistTemplatesSection } from "@/components/settings/ChecklistTemplatesSection"
 import {
   useCelebrationSettings,
   notify,
@@ -297,6 +298,8 @@ export function GeneralSection() {
           )}
         </div>
       </div>
+
+      <ChecklistTemplatesSection />
 
       <div className="space-y-4">
         <div>

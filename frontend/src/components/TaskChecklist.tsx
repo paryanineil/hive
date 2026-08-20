@@ -1,8 +1,14 @@
 import { useState, useMemo, useCallback } from "react"
-import { useFrappeUpdateDoc } from "frappe-react-sdk"
+import { useFrappeUpdateDoc, useFrappeGetCall } from "frappe-react-sdk"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Add01Icon, Cancel01Icon } from "@hugeicons/core-free-icons"
+import { Add01Icon, Cancel01Icon, TaskDaily01Icon } from "@hugeicons/core-free-icons"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -56,6 +62,27 @@ export function TaskChecklist({ taskName, items, readOnly = false, onChanged }: 
     }
   }, [taskName, updateDoc, onChanged])
 
+  // Checklist templates (managed in Settings -> General).
+  const { data: templatesData } = useFrappeGetCall<{
+    message: { name: string; template_name: string; items: string[] }[]
+  }>("bwh_hive.bwh_hive.api.get_checklist_templates", undefined, readOnly ? null : "checklist-templates")
+  const templates = templatesData?.message ?? []
+
+  const applyTemplate = (template: { template_name: string; items: string[] }) => {
+    if (!template.items.length) return
+    // Append rather than replace, skipping items the task already has.
+    const existing = new Set(rows.map((r) => r.content.trim().toLowerCase()))
+    const fresh = template.items
+      .filter((c) => !existing.has(c.trim().toLowerCase()))
+      .map((content) => ({ content, completed: 0 as const }))
+    if (!fresh.length) {
+      toast.info("All items from that template are already on this task")
+      return
+    }
+    persist([...rows, ...fresh], rows)
+    toast.success(`Added ${fresh.length} item${fresh.length !== 1 ? "s" : ""} from "${template.template_name}"`)
+  }
+
   const addItem = () => {
     const text = draft.trim()
     if (!text) return
@@ -78,11 +105,31 @@ export function TaskChecklist({ taskName, items, readOnly = false, onChanged }: 
     <div className="grid gap-2">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">Checklist</span>
-        {rows.length > 0 && (
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {done}/{rows.length}
-          </span>
-        )}
+        <span className="flex items-center gap-2">
+          {!readOnly && templates.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs text-muted-foreground" />}
+              >
+                <HugeiconsIcon icon={TaskDaily01Icon} strokeWidth={2} className="size-3.5" />
+                Template
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {templates.map((t) => (
+                  <DropdownMenuItem key={t.name} onClick={() => applyTemplate(t)}>
+                    <span className="flex-1">{t.template_name}</span>
+                    <span className="text-xs text-muted-foreground">{t.items.length}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {rows.length > 0 && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {done}/{rows.length}
+            </span>
+          )}
+        </span>
       </div>
 
       {rows.length > 0 && (

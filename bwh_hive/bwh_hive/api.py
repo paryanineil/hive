@@ -1075,3 +1075,36 @@ def get_project_members():
 			}
 		)
 	return grouped
+
+
+@frappe.whitelist()
+def get_checklist_templates():
+	"""Return every checklist template with its items, oldest first.
+
+	Child rows don't come back with a list query, so this resolves them in one
+	call for the task sheet's template picker.
+	"""
+	templates = frappe.get_all(
+		"Hive Checklist Template",
+		fields=["name", "template_name"],
+		order_by="creation asc",
+		limit_page_length=0,
+	)
+	items = frappe.get_all(
+		"Hive Task Checklist Item",
+		filters={"parenttype": "Hive Checklist Template"},
+		fields=["parent", "content", "idx"],
+		order_by="idx asc",
+		limit_page_length=0,
+	)
+	by_template: dict[str, list[str]] = {}
+	for row in items:
+		by_template.setdefault(row.parent, []).append(row.content)
+	return [
+		{
+			"name": t.name,
+			"template_name": t.template_name,
+			"items": by_template.get(t.name, []),
+		}
+		for t in templates
+	]
