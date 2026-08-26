@@ -3,12 +3,7 @@ import { useFrappeUpdateDoc, useFrappeGetCall } from "frappe-react-sdk"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Add01Icon, Cancel01Icon, TaskDaily01Icon } from "@hugeicons/core-free-icons"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -68,19 +63,39 @@ export function TaskChecklist({ taskName, items, readOnly = false, onChanged }: 
   }>("bwh_hive.bwh_hive.api.get_checklist_templates", undefined, readOnly ? null : "checklist-templates")
   const templates = templatesData?.message ?? []
 
-  const applyTemplate = (template: { template_name: string; items: string[] }) => {
-    if (!template.items.length) return
-    // Append rather than replace, skipping items the task already has.
-    const existing = new Set(rows.map((r) => r.content.trim().toLowerCase()))
-    const fresh = template.items
-      .filter((c) => !existing.has(c.trim().toLowerCase()))
-      .map((content) => ({ content, completed: 0 as const }))
+  const [templatesOpen, setTemplatesOpen] = useState(false)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+
+  const togglePicked = (name: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev)
+      next.has(name) ? next.delete(name) : next.add(name)
+      return next
+    })
+
+  /** Append the items of every selected template, deduped against the task and across templates. */
+  const applyPicked = () => {
+    const chosen = templates.filter((t) => picked.has(t.name))
+    if (!chosen.length) return
+    const seen = new Set(rows.map((r) => r.content.trim().toLowerCase()))
+    const fresh: HiveTaskChecklistItem[] = []
+    for (const t of chosen) {
+      for (const content of t.items) {
+        const key = content.trim().toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        fresh.push({ content, completed: 0 })
+      }
+    }
+    setTemplatesOpen(false)
+    setPicked(new Set())
     if (!fresh.length) {
-      toast.info("All items from that template are already on this task")
+      toast.info("All items from the selected templates are already on this task")
       return
     }
     persist([...rows, ...fresh], rows)
-    toast.success(`Added ${fresh.length} item${fresh.length !== 1 ? "s" : ""} from "${template.template_name}"`)
+    const label = chosen.length === 1 ? `"${chosen[0].template_name}"` : `${chosen.length} templates`
+    toast.success(`Added ${fresh.length} item${fresh.length !== 1 ? "s" : ""} from ${label}`)
   }
 
   const addItem = () => {
@@ -107,22 +122,47 @@ export function TaskChecklist({ taskName, items, readOnly = false, onChanged }: 
         <span className="text-sm font-medium">Checklist</span>
         <span className="flex items-center gap-2">
           {!readOnly && templates.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
+            <Popover open={templatesOpen} onOpenChange={(o) => { setTemplatesOpen(o); if (!o) setPicked(new Set()) }}>
+              <PopoverTrigger
                 render={<Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs text-muted-foreground" />}
               >
                 <HugeiconsIcon icon={TaskDaily01Icon} strokeWidth={2} className="size-3.5" />
-                Template
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {templates.map((t) => (
-                  <DropdownMenuItem key={t.name} onClick={() => applyTemplate(t)}>
-                    <span className="flex-1">{t.template_name}</span>
-                    <span className="text-xs text-muted-foreground">{t.items.length}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                Templates
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-64 p-0">
+                <p className="border-b px-3 py-2 text-xs text-muted-foreground">
+                  Pick one or more templates to add their items
+                </p>
+                <div className="max-h-56 overflow-y-auto p-1">
+                  {templates.map((t) => (
+                    <button
+                      key={t.name}
+                      type="button"
+                      onClick={() => togglePicked(t.name)}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
+                    >
+                      <Checkbox checked={picked.has(t.name)} className="pointer-events-none" />
+                      <span className="min-w-0 flex-1 truncate">{t.template_name}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{t.items.length}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between gap-2 border-t p-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={picked.size === 0}
+                    onClick={() => setPicked(new Set())}
+                  >
+                    Clear
+                  </Button>
+                  <Button size="sm" className="h-7 text-xs" disabled={picked.size === 0} onClick={applyPicked}>
+                    Apply{picked.size > 0 ? ` (${picked.size})` : ""}
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
           )}
           {rows.length > 0 && (
             <span className="text-xs text-muted-foreground tabular-nums">
