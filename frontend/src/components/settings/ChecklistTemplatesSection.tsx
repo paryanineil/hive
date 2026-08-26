@@ -119,7 +119,9 @@ export function ChecklistTemplatesSection() {
               <div className="min-w-0">
                 <p className="truncate text-sm">{t.template_name}</p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {t.items.length} item{t.items.length !== 1 ? "s" : ""} · {t.items.slice(0, 3).join(", ")}{t.items.length > 3 ? "…" : ""}
+                  {/* Hard cap: a nowrap line's min-content width is its full text,
+                      which can force ancestor flex panes wider than the dialog. */}
+                  {`${t.items.length} item${t.items.length !== 1 ? "s" : ""} · ${t.items.slice(0, 3).join(", ")}${t.items.length > 3 ? "…" : ""}`.slice(0, 90)}
                 </p>
               </div>
               <div className="flex shrink-0 items-center">
