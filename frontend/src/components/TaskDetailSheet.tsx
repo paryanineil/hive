@@ -288,6 +288,14 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
 
   const checklistRemaining = (taskDoc?.checklist ?? []).filter((i) => !i.completed).length
 
+  // "Created Aug 12, 2026 by Kamal" — owner resolved to a member name when possible.
+  const createdInfo = (() => {
+    const src = taskDoc ?? task
+    if (!src?.creation) return null
+    const who = allMembers?.find((m) => m.name === src.owner)?.member_name || src.owner
+    return `Created ${format(new Date(src.creation), "MMM d, yyyy")}${who ? ` by ${who}` : ""}`
+  })()
+
   const handleStatusChange = (newStatus: string) => {
     // Guard here too so the user gets an instant explanation instead of a
     // failed save — the backend enforces the same rule authoritatively.
@@ -912,7 +920,10 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
                 </Button>
               )}
             </div>
-            <DrawerDescription>{task.name}</DrawerDescription>
+            <DrawerDescription>
+              {task.name}
+              {createdInfo && <span className="text-muted-foreground"> · {createdInfo}</span>}
+            </DrawerDescription>
           </DrawerHeader>
           {formContent}
           {footerButtons && (
@@ -943,7 +954,10 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
               </SheetClose>
             </div>
           </div>
-          <SheetDescription>{task.name}</SheetDescription>
+          <SheetDescription>
+            {task.name}
+            {createdInfo && <span className="text-muted-foreground"> · {createdInfo}</span>}
+          </SheetDescription>
         </SheetHeader>
         {formContent}
         {footerButtons && (

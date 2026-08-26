@@ -103,7 +103,9 @@ function DraggableChip({
       ref={(node) => { setNodeRef(node); setDropRef(node) }}
       type="button"
       onClick={onClick}
-      title={dueState === "overdue" ? `${task.title} — overdue` : task.title}
+      title={`${task.title}${dueState === "overdue" ? " — overdue" : ""}${
+        task.creation ? ` · created ${format(new Date(task.creation), "MMM d, yyyy")} by ${task.owner}` : ""
+      }`}
       className={cn(
         "flex w-full items-center gap-1.5 rounded bg-card px-1.5 py-1 text-left text-xs shadow-sm ring-1 ring-border transition-colors hover:bg-accent",
         isDragging && "opacity-40",

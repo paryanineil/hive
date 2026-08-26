@@ -204,7 +204,10 @@ const columns: ColumnDef<TaskRow>[] = [
     accessorFn: (row) => row.task.creation ?? "",
     header: ({ column }) => <SortHeader label="Created" column={column} />,
     cell: ({ row }) => (
-      <span className="whitespace-nowrap text-muted-foreground">
+      <span
+        className="whitespace-nowrap text-muted-foreground"
+        title={row.original.task.owner ? `Created by ${row.original.task.owner}` : undefined}
+      >
         {row.original.task.creation ? format(new Date(row.original.task.creation), "MMM d, yyyy") : "-"}
       </span>
     ),
@@ -401,6 +404,9 @@ export function TaskListTable({ data, onRowClick, countNote = "", hideProjectCol
               {task.due_date ? format(new Date(task.due_date), "MMM d, yyyy") : "No due date"}
               {dueState === "today" && " · Today"}
               {dueState === "overdue" && " · Overdue"}
+              {task.creation && (
+                <span className="text-muted-foreground/70"> · created {format(new Date(task.creation), "MMM d")}</span>
+              )}
             </span>
             {assignees.length > 0 && (
               <AvatarGroup>

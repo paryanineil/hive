@@ -340,6 +340,14 @@ const TaskCard = memo(function TaskCard({ task, isDragOverlay, assignees }: { ta
                 {dueState === "today" && " · Today"}
               </span>
             )}
+            {task.creation && (
+              <span
+                className="text-[10px] text-muted-foreground/70"
+                title={`Created ${format(new Date(task.creation), "MMM d, yyyy")} by ${task.owner}`}
+              >
+                +{format(new Date(task.creation), "MMM d")}
+              </span>
+            )}
           </div>
           {hasAssignees ? (
             <AvatarGroup>

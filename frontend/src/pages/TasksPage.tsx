@@ -157,7 +157,7 @@ export function TasksPage() {
     {
       fields: [
         "name", "title", "project", "status", "priority", "size", "milestone",
-        "depends_on", "assigned_to", "is_internal", "description", "start_date", "due_date", "pr_link",
+        "depends_on", "assigned_to", "is_internal", "description", "start_date", "due_date", "pr_link", "owner",
         "completed_on", "uat_status", "recurrence_frequency", "recurrence_end_date", "creation", "modified",
       ],
       filters: [["is_archived", "=", 0]],

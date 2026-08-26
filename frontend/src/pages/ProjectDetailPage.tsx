@@ -101,6 +101,7 @@ import {
 
 const TASK_FIELDS = [
   "name",
+  "owner",
   "title",
   "project",
   "status",

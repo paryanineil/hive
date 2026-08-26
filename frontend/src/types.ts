@@ -46,6 +46,7 @@ export type AgentStatus = (typeof AGENT_STATUSES)[number]
 export interface HiveTask {
   name: string
   title: string
+  owner: string
   project: string
   status: "Someday" | "Backlog" | "To Do" | "In Progress" | "Done" | "Blocked"
   priority: "Low" | "Medium" | "High" | "Urgent"

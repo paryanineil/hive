@@ -142,7 +142,7 @@ export function TaskTimeline({ tasks, projectTitles, onTaskClick }: TaskTimeline
                           onClick={() => onTaskClick(task)}
                           title={`${task.title} · ${format(start, "MMM d")} – ${format(end, "MMM d")}${
                             getDueState(task.due_date, task.status) === "overdue" ? " · overdue" : ""
-                          }`}
+                          }${task.creation ? ` · created ${format(new Date(task.creation), "MMM d, yyyy")} by ${task.owner}` : ""}`}
                           className={cn(
                             "absolute top-1/2 flex h-5 -translate-y-1/2 items-center gap-1 overflow-hidden rounded px-1.5 text-[11px] font-medium text-white shadow-sm transition-opacity hover:opacity-90",
                             getDueState(task.due_date, task.status) === "overdue"
