@@ -1,31 +1,19 @@
-import 'dart:async';
-
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-/// The Ignition instance this app fronts. The whole product lives in the web
-/// app; this shell adds an installable icon, splash, session persistence,
-/// hardware back-button support and native file pickers.
-const String kBaseUrl = 'https://erp2.v12infotech.com/ignition';
-const String kHost = 'erp2.v12infotech.com';
+import 'api/client.dart';
+import 'api/repo.dart';
+import 'screens/login.dart';
+import 'screens/shell.dart';
+import 'theme.dart';
 
-const Color kOrange = Color(0xFFE8630A);
-const Color kBlack = Color(0xFF0A0A0A);
+/// Simple app-wide service locator — one client, one repo.
+late final ApiClient api;
+late final Repo repo;
 
-
-/// True for same-host pages that belong to the ERP, not Ignition.
-/// Login/password flows, the Ignition SPA, and API/asset paths stay allowed.
-bool _isOutsideIgnition(String path) {
-  if (path == '/' || path == '/app' || path == '/apps' || path == '/me') return true;
-  if (path.startsWith('/app/')) return true;
-  return false;
-}
-
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  api = await ApiClient.create();
+  repo = Repo(api);
   runApp(const IgnitionApp());
 }
 
@@ -37,172 +25,48 @@ class IgnitionApp extends StatelessWidget {
     return MaterialApp(
       title: 'Ignition',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: kOrange,
-          brightness: Brightness.dark,
-          surface: kBlack,
-        ),
-        scaffoldBackgroundColor: kBlack,
-        useMaterial3: true,
-      ),
-      home: const IgnitionShell(),
+      theme: buildTheme(),
+      home: const _Gate(),
     );
   }
 }
 
-class IgnitionShell extends StatefulWidget {
-  const IgnitionShell({super.key});
+/// Decides between login and the app based on the stored session.
+class _Gate extends StatefulWidget {
+  const _Gate();
 
   @override
-  State<IgnitionShell> createState() => _IgnitionShellState();
+  State<_Gate> createState() => _GateState();
 }
 
-class _IgnitionShellState extends State<IgnitionShell> {
-  late final WebViewController _controller;
-  bool _loading = true;
-  String? _error;
+class _GateState extends State<_Gate> {
+  bool? _loggedIn;
 
   @override
   void initState() {
     super.initState();
-
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(kBlack)
-      ..setUserAgent('IgnitionApp/1.0 (Android; Flutter WebView)')
-      ..setNavigationDelegate(NavigationDelegate(
-        onPageStarted: (_) => setState(() {
-          _loading = true;
-          _error = null;
-        }),
-        onPageFinished: (url) async {
-          setState(() => _loading = false);
-          final uri = Uri.tryParse(url);
-          if (uri != null && uri.host == kHost && _isOutsideIgnition(uri.path)) {
-            await _controller.loadRequest(Uri.parse(kBaseUrl));
-          }
-        },
-        onWebResourceError: (err) {
-          // Only surface main-frame failures; subresource hiccups are normal.
-          if (err.isForMainFrame ?? false) {
-            setState(() {
-              _loading = false;
-              _error = err.description;
-            });
-          }
-        },
-        onNavigationRequest: (request) {
-          final uri = Uri.tryParse(request.url);
-          if (uri == null) return NavigationDecision.navigate;
-          if (uri.host == kHost) {
-            // Same server also hosts the ERP desk. After login Frappe sends the
-            // user to /app (or the site home) — steer those back into Ignition
-            // so this app never wanders into ERPNext.
-            if (_isOutsideIgnition(uri.path)) {
-              _controller.loadRequest(Uri.parse(kBaseUrl));
-              return NavigationDecision.prevent;
-            }
-            return NavigationDecision.navigate;
-          }
-          // Any other domain (GitHub links, PR links...) opens externally.
-          launchUrl(uri, mode: LaunchMode.externalApplication);
-          return NavigationDecision.prevent;
-        },
-      ))
-      ..loadRequest(Uri.parse(kBaseUrl));
-
-    // Android: wire <input type=file> to a native picker (attachments, images).
-    final platform = _controller.platform;
-    if (platform is AndroidWebViewController) {
-      platform.setOnShowFileSelector((params) async {
-        final result = await FilePicker.platform.pickFiles(
-          allowMultiple: params.mode == FileSelectorMode.openMultiple,
-        );
-        if (result == null) return <String>[];
-        return result.paths
-            .whereType<String>()
-            .map((p) => Uri.file(p).toString())
-            .toList();
-      });
-    }
+    _check();
   }
 
-  Future<bool> _handleBack() async {
-    if (await _controller.canGoBack()) {
-      await _controller.goBack();
-      return false; // consumed: stay in app
+  Future<void> _check() async {
+    bool ok = false;
+    try {
+      ok = await api.hasSession();
+    } catch (_) {
+      // Offline at launch: show login, it surfaces the error on submit.
     }
-    return true; // at root: let Android close the app
+    if (mounted) setState(() => _loggedIn = ok);
   }
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
-        if (await _handleBack() && mounted) {
-          // ignore: use_build_context_synchronously
-          Navigator.of(context).maybePop();
-        }
-      },
-      child: Scaffold(
-        backgroundColor: kBlack,
-        body: SafeArea(
-          child: _error != null
-              ? _ErrorView(
-                  message: _error!,
-                  onRetry: () => _controller.loadRequest(Uri.parse(kBaseUrl)),
-                )
-              : Stack(
-                  children: [
-                    WebViewWidget(controller: _controller),
-                    if (_loading)
-                      const LinearProgressIndicator(
-                        minHeight: 2,
-                        color: kOrange,
-                        backgroundColor: Colors.transparent,
-                      ),
-                  ],
-                ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, size: 48, color: kOrange),
-            const SizedBox(height: 16),
-            const Text('Can\'t reach Ignition',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white)),
-            const SizedBox(height: 8),
-            Text(message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13, color: Colors.white54)),
-            const SizedBox(height: 20),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: kOrange),
-              onPressed: onRetry,
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
-    );
+    if (_loggedIn == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator(color: kOrange)),
+      );
+    }
+    return _loggedIn!
+        ? ShellScreen(onLogout: () => setState(() => _loggedIn = false))
+        : LoginScreen(onLoggedIn: () => setState(() => _loggedIn = true));
   }
 }
