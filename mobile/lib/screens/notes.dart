@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart';
+import 'package:flutter_quill_delta_from_html/flutter_quill_delta_from_html.dart';
+import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 
 import '../main.dart';
@@ -176,12 +179,12 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 }
 
-/// Note reader + a pragmatic plain-text editor.
+/// Note reader + native rich-text editor (flutter_quill).
 ///
-/// The web app writes rich HTML; rendering that natively is easy, but a full
-/// native rich-text editor is a later phase. Editing here converts paragraphs
-/// to plain text lines and saves them back as simple <p> HTML — fine for
-/// jotting, while heavy formatting stays a web-side activity.
+/// Notes store Tiptap HTML; we convert HTML -> Delta to edit and Delta -> HTML
+/// to save. Formatting the mobile editor can't represent (tables, embedded
+/// images) would be flattened by a save, so notes containing those get a
+/// warning before editing.
 class NoteScreen extends StatefulWidget {
   const NoteScreen({super.key, required this.noteName});
   final String noteName;
@@ -193,7 +196,8 @@ class NoteScreen extends StatefulWidget {
 class _NoteScreenState extends State<NoteScreen> {
   Note? _note;
   bool _editing = false;
-  final _ctl = TextEditingController();
+  bool _saving = false;
+  QuillController? _quill;
   String? _error;
 
   @override
@@ -215,79 +219,163 @@ class _NoteScreenState extends State<NoteScreen> {
     }
   }
 
-  String _htmlToText(String html) => html
-      .replaceAll(RegExp(r'<br\s*/?>'), '\n')
-      .replaceAll(RegExp(r'</(p|div|h[1-6]|li)>'), '\n')
-      .replaceAll(RegExp(r'<[^>]+>'), '')
-      .replaceAll('&nbsp;', ' ')
-      .replaceAll('&amp;', '&')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>')
-      .trim();
+  Document _htmlToDoc(String html) {
+    if (html.trim().isEmpty) return Document();
+    final delta = HtmlToDelta().convert(html);
+    if (delta.isEmpty) return Document();
+    return Document.fromDelta(delta);
+  }
 
-  String _textToHtml(String text) => text
-      .split('\n')
-      .map((line) => line.trim().isEmpty
-          ? '<p><br></p>'
-          : '<p>${line.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}</p>')
-      .join();
+  String _docToHtml(Document doc) {
+    final ops = doc.toDelta().toJson();
+    return QuillDeltaToHtmlConverter(List.castFrom(ops)).convert();
+  }
+
+  Future<void> _startEditing() async {
+    final html = _note?.content ?? '';
+    final complex = RegExp(r'<(table|img)\b').hasMatch(html);
+    if (complex) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: kCard,
+          title: const Text('Heads up'),
+          content: const Text(
+              'This note contains tables or images, which the mobile editor '
+              "can't edit. Saving from here will simplify that formatting. "
+              'Edit anyway?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Edit anyway')),
+          ],
+        ),
+      );
+      if (go != true) return;
+    }
+    try {
+      final controller = QuillController(
+        document: _htmlToDoc(html),
+        selection: const TextSelection.collapsed(offset: 0),
+      );
+      setState(() {
+        _quill = controller;
+        _editing = true;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not open editor: $e')));
+      }
+    }
+  }
 
   Future<void> _save() async {
+    final q = _quill;
+    if (q == null) return;
+    setState(() => _saving = true);
     try {
-      await repo.updateNote(widget.noteName, {'content': _textToHtml(_ctl.text)});
-      setState(() => _editing = false);
+      await repo.updateNote(widget.noteName, {'content': _docToHtml(q.document)});
+      setState(() {
+        _editing = false;
+        _quill = null;
+      });
       await _load();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
       }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _discard() async {
+    setState(() {
+      _editing = false;
+      _quill = null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final n = _note;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(n?.title ?? ''),
-        actions: [
-          if (n != null && !_editing)
-            IconButton(
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: () {
-                _ctl.text = _htmlToText(n.content ?? '');
-                setState(() => _editing = true);
-              },
-            ),
-          if (_editing)
-            IconButton(icon: const Icon(Icons.check, color: kOrange), onPressed: _save),
-        ],
-      ),
-      body: _error != null
-          ? Center(child: Text(_error!, style: const TextStyle(color: kMuted)))
-          : n == null
-              ? const Center(child: CircularProgressIndicator(color: kOrange))
-              : _editing
-                  ? Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: TextField(
-                        controller: _ctl,
-                        maxLines: null,
-                        expands: true,
-                        textAlignVertical: TextAlignVertical.top,
-                        decoration: const InputDecoration(
-                            hintText: 'Write…', border: InputBorder.none, filled: false),
+    return PopScope(
+      canPop: !_editing,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _editing) _discard();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(n?.title ?? ''),
+          actions: [
+            if (n != null && !_editing)
+              IconButton(icon: const Icon(Icons.edit_outlined), onPressed: _startEditing),
+            if (_editing) ...[
+              TextButton(onPressed: _discard, child: const Text('Cancel', style: TextStyle(color: kMuted))),
+              IconButton(
+                icon: _saving
+                    ? const SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: kOrange))
+                    : const Icon(Icons.check, color: kOrange),
+                onPressed: _saving ? null : _save,
+              ),
+            ],
+          ],
+        ),
+        body: _error != null
+            ? Center(child: Text(_error!, style: const TextStyle(color: kMuted)))
+            : n == null
+                ? const Center(child: CircularProgressIndicator(color: kOrange))
+                : _editing && _quill != null
+                    ? Column(
+                        children: [
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              child: QuillEditor.basic(
+                                controller: _quill!,
+                                config: const QuillEditorConfig(
+                                  placeholder: 'Write…',
+                                  expands: true,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const Divider(height: 1),
+                          SafeArea(
+                            top: false,
+                            child: QuillSimpleToolbar(
+                              controller: _quill!,
+                              config: const QuillSimpleToolbarConfig(
+                                multiRowsDisplay: false,
+                                showFontFamily: false,
+                                showFontSize: false,
+                                showColorButton: false,
+                                showBackgroundColorButton: false,
+                                showSubscript: false,
+                                showSuperscript: false,
+                                showSearchButton: false,
+                                showAlignmentButtons: false,
+                                showIndent: false,
+                                showDividers: false,
+                                showClipboardCopy: false,
+                                showClipboardCut: false,
+                                showClipboardPaste: false,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: (n.content ?? '').trim().isEmpty
+                            ? const Text('Empty note — tap ✎ to write.',
+                                style: TextStyle(color: kMuted))
+                            : HtmlWidget(n.content!,
+                                textStyle: const TextStyle(fontSize: 15, color: Colors.white)),
                       ),
-                    )
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
-                      child: (n.content ?? '').trim().isEmpty
-                          ? const Text('Empty note — tap ✎ to write.',
-                              style: TextStyle(color: kMuted))
-                          : HtmlWidget(n.content!,
-                              textStyle:
-                                  const TextStyle(fontSize: 15, color: Colors.white)),
-                    ),
+      ),
     );
   }
 }

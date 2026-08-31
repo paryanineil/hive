@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations;
 
 import 'api/client.dart';
 import 'api/repo.dart';
@@ -26,6 +27,9 @@ class IgnitionApp extends StatelessWidget {
       title: 'Ignition',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
+      // Required by flutter_quill widgets at runtime.
+      localizationsDelegates: FlutterQuillLocalizations.localizationsDelegates,
+      supportedLocales: FlutterQuillLocalizations.supportedLocales,
       home: const _Gate(),
     );
   }
