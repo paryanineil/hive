@@ -61,3 +61,6 @@ test-results/
 bwh_hive/public/frontend/
 bwh_hive/public/node_modules
 bwh_hive/www/ignition.html
+# Ship the Android APK with the app so it's served at /assets/bwh_hive/downloads/
+!bwh_hive/public/downloads/
+!bwh_hive/public/downloads/**

@@ -23,6 +23,7 @@ import {
   MoreHorizontalIcon,
   PencilEdit01Icon,
   Bug01Icon,
+  SmartPhone01Icon,
   StickyNote01Icon,
 } from "@hugeicons/core-free-icons"
 import {
@@ -405,10 +406,16 @@ export function AppSidebar({
                   {resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => window.open("https://github.com/BuildWithHussain/hive/issues/new", "_blank")}
+                  onClick={() => window.open("https://github.com/paryanineil/hive/issues/new", "_blank")}
                 >
                   <HugeiconsIcon icon={Bug01Icon} strokeWidth={2} />
                   Raise an issue
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => window.open("/assets/bwh_hive/downloads/Ignition.apk", "_blank")}
+                >
+                  <HugeiconsIcon icon={SmartPhone01Icon} strokeWidth={2} />
+                  Get the Android app
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}>
