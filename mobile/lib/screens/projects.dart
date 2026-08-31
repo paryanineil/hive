@@ -4,8 +4,10 @@ import '../main.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/task_tile.dart';
+import 'calendar_view.dart';
 import 'task_detail.dart';
 import 'tasks.dart' show CreateTaskSheet, KanbanBoard;
+import 'timeline_view.dart';
 
 class ProjectsScreen extends StatefulWidget {
   const ProjectsScreen({super.key});
@@ -102,7 +104,7 @@ class ProjectDetailScreen extends StatefulWidget {
 
 class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   List<Task>? _tasks;
-  bool _kanban = true;
+  String _view = 'kanban';
   bool _showCompleted = false;
   String? _error;
 
@@ -142,9 +144,33 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
             icon: Icon(_showCompleted ? Icons.visibility_off : Icons.check_circle_outline),
             onPressed: () => setState(() => _showCompleted = !_showCompleted),
           ),
-          IconButton(
-            icon: Icon(_kanban ? Icons.view_agenda_outlined : Icons.view_kanban_outlined),
-            onPressed: () => setState(() => _kanban = !_kanban),
+          PopupMenuButton<String>(
+            tooltip: 'View',
+            icon: Icon(switch (_view) {
+              'kanban' => Icons.view_kanban_outlined,
+              'calendar' => Icons.calendar_month_outlined,
+              'timeline' => Icons.stacked_bar_chart,
+              _ => Icons.view_agenda_outlined,
+            }),
+            color: kCard,
+            onSelected: (v) => setState(() => _view = v),
+            itemBuilder: (_) => [
+              for (final (v, label, icon) in const [
+                ('list', 'List', Icons.view_agenda_outlined),
+                ('kanban', 'Board', Icons.view_kanban_outlined),
+                ('calendar', 'Calendar', Icons.calendar_month_outlined),
+                ('timeline', 'Timeline', Icons.stacked_bar_chart),
+              ])
+                CheckedPopupMenuItem(
+                  value: v,
+                  checked: _view == v,
+                  child: Row(children: [
+                    Icon(icon, size: 18, color: kMuted),
+                    const SizedBox(width: 8),
+                    Text(label),
+                  ]),
+                ),
+            ],
           ),
         ],
       ),
@@ -167,7 +193,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
           ? Center(child: Text(_error!, style: const TextStyle(color: kMuted)))
           : _tasks == null
               ? const Center(child: CircularProgressIndicator(color: kOrange))
-              : _kanban
+              : _view == 'kanban'
                   ? KanbanBoard(
                       tasks: visible,
                       projectTitles: {widget.project.name: widget.project.title},
@@ -178,7 +204,28 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                       },
                       onMoved: _load,
                     )
-                  : RefreshIndicator(
+                  : _view == 'calendar'
+                      ? CalendarView(
+                          tasks: visible,
+                          projectTitles: {widget.project.name: widget.project.title},
+                          onOpen: (t) async {
+                            await Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => TaskDetailScreen(taskName: t.name)));
+                            _load();
+                          },
+                        )
+                      : _view == 'timeline'
+                          ? TimelineView(
+                              tasks: visible,
+                              projectTitles: {widget.project.name: widget.project.title},
+                              onOpen: (t) async {
+                                await Navigator.of(context).push(MaterialPageRoute(
+                                    builder: (_) =>
+                                        TaskDetailScreen(taskName: t.name)));
+                                _load();
+                              },
+                            )
+                          : RefreshIndicator(
                       color: kOrange,
                       onRefresh: _load,
                       child: ListView.separated(

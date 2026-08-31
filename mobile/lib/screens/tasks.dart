@@ -4,7 +4,9 @@ import '../main.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/task_tile.dart';
+import 'calendar_view.dart';
 import 'task_detail.dart';
+import 'timeline_view.dart';
 
 /// Smart lists mirrored from the web sidebar.
 const _smartLists = [
@@ -31,7 +33,7 @@ class TasksScreenState extends State<TasksScreen> {
 
   String _smart = 'all';
   String _search = '';
-  bool _kanban = false;
+  String _view = 'list'; // list | kanban | calendar | timeline
   final Set<String> _statusFilter = {};
   final Set<String> _priorityFilter = {};
   String? _projectFilter;
@@ -138,10 +140,33 @@ class TasksScreenState extends State<TasksScreen> {
       appBar: AppBar(
         title: const Text('Tasks'),
         actions: [
-          IconButton(
-            tooltip: _kanban ? 'List view' : 'Board view',
-            icon: Icon(_kanban ? Icons.view_agenda_outlined : Icons.view_kanban_outlined),
-            onPressed: () => setState(() => _kanban = !_kanban),
+          PopupMenuButton<String>(
+            tooltip: 'View',
+            icon: Icon(switch (_view) {
+              'kanban' => Icons.view_kanban_outlined,
+              'calendar' => Icons.calendar_month_outlined,
+              'timeline' => Icons.stacked_bar_chart,
+              _ => Icons.view_agenda_outlined,
+            }),
+            color: kCard,
+            onSelected: (v) => setState(() => _view = v),
+            itemBuilder: (_) => [
+              for (final (v, label, icon) in const [
+                ('list', 'List', Icons.view_agenda_outlined),
+                ('kanban', 'Board', Icons.view_kanban_outlined),
+                ('calendar', 'Calendar', Icons.calendar_month_outlined),
+                ('timeline', 'Timeline', Icons.stacked_bar_chart),
+              ])
+                CheckedPopupMenuItem(
+                  value: v,
+                  checked: _view == v,
+                  child: Row(children: [
+                    Icon(icon, size: 18, color: kMuted),
+                    const SizedBox(width: 8),
+                    Text(label),
+                  ]),
+                ),
+            ],
           ),
           IconButton(
             tooltip: 'Filters',
@@ -200,14 +225,26 @@ class TasksScreenState extends State<TasksScreen> {
                         ),
                       ),
                       Expanded(
-                        child: _kanban
+                        child: _view == 'kanban'
                             ? KanbanBoard(
                                 tasks: _visible,
                                 projectTitles: _projectTitles,
                                 onOpen: _openTask,
                                 onMoved: refresh,
                               )
-                            : _visible.isEmpty
+                            : _view == 'calendar'
+                                ? CalendarView(
+                                    tasks: _visible,
+                                    projectTitles: _projectTitles,
+                                    onOpen: _openTask,
+                                  )
+                                : _view == 'timeline'
+                                    ? TimelineView(
+                                        tasks: _visible,
+                                        projectTitles: _projectTitles,
+                                        onOpen: _openTask,
+                                      )
+                                    : _visible.isEmpty
                                 ? const Center(
                                     child:
                                         Text('No tasks here', style: TextStyle(color: kMuted)))
