@@ -15,6 +15,15 @@ const String kHost = 'erp2.v12infotech.com';
 const Color kOrange = Color(0xFFE8630A);
 const Color kBlack = Color(0xFF0A0A0A);
 
+
+/// True for same-host pages that belong to the ERP, not Ignition.
+/// Login/password flows, the Ignition SPA, and API/asset paths stay allowed.
+bool _isOutsideIgnition(String path) {
+  if (path == '/' || path == '/app' || path == '/apps' || path == '/me') return true;
+  if (path.startsWith('/app/')) return true;
+  return false;
+}
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const IgnitionApp());
@@ -67,7 +76,13 @@ class _IgnitionShellState extends State<IgnitionShell> {
           _loading = true;
           _error = null;
         }),
-        onPageFinished: (_) => setState(() => _loading = false),
+        onPageFinished: (url) async {
+          setState(() => _loading = false);
+          final uri = Uri.tryParse(url);
+          if (uri != null && uri.host == kHost && _isOutsideIgnition(uri.path)) {
+            await _controller.loadRequest(Uri.parse(kBaseUrl));
+          }
+        },
         onWebResourceError: (err) {
           // Only surface main-frame failures; subresource hiccups are normal.
           if (err.isForMainFrame ?? false) {
@@ -80,9 +95,17 @@ class _IgnitionShellState extends State<IgnitionShell> {
         onNavigationRequest: (request) {
           final uri = Uri.tryParse(request.url);
           if (uri == null) return NavigationDecision.navigate;
-          // Keep Ignition (and its login) inside the app; hand every other
-          // domain (GitHub links, PR links...) to the system browser.
-          if (uri.host == kHost) return NavigationDecision.navigate;
+          if (uri.host == kHost) {
+            // Same server also hosts the ERP desk. After login Frappe sends the
+            // user to /app (or the site home) — steer those back into Ignition
+            // so this app never wanders into ERPNext.
+            if (_isOutsideIgnition(uri.path)) {
+              _controller.loadRequest(Uri.parse(kBaseUrl));
+              return NavigationDecision.prevent;
+            }
+            return NavigationDecision.navigate;
+          }
+          // Any other domain (GitHub links, PR links...) opens externally.
           launchUrl(uri, mode: LaunchMode.externalApplication);
           return NavigationDecision.prevent;
         },
