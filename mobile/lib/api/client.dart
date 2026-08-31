@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
@@ -170,6 +171,47 @@ class ApiClient {
     final res =
         await _write('PUT', '/api/resource/$doctype/${Uri.encodeComponent(name)}', values);
     return (res.data['data'] as Map).cast<String, dynamic>();
+  }
+
+  Future<void> deleteDoc(String doctype, String name) async {
+    await _write('DELETE', '/api/resource/$doctype/${Uri.encodeComponent(name)}', null);
+  }
+
+  /// Upload a file and attach it to a document (Frappe's upload_file handler).
+  Future<Map<String, dynamic>> uploadFile({
+    required String filePath,
+    required String fileName,
+    required String doctype,
+    required String docname,
+    bool isPrivate = true,
+  }) async {
+    if (_csrfToken == null) await _fetchCsrf();
+    Future<Response> send() async => _dio.post(
+          '/api/method/upload_file',
+          data: FormData.fromMap({
+            'file': await MultipartFile.fromFile(filePath, filename: fileName),
+            'doctype': doctype,
+            'docname': docname,
+            'is_private': isPrivate ? '1' : '0',
+          }),
+          options: Options(headers: {'X-Frappe-CSRF-Token': _csrfToken ?? ''}),
+        );
+    var res = await send();
+    if ((res.statusCode == 400 || res.statusCode == 403) &&
+        (_messageFrom(res) ?? '').toLowerCase().contains('csrf')) {
+      await _fetchCsrf();
+      res = await send();
+    }
+    _ensureOk(res);
+    return (res.data['message'] as Map).cast<String, dynamic>();
+  }
+
+  /// Download a (possibly private) file using the session cookies.
+  Future<void> downloadFile(String fileUrl, String savePath) async {
+    final res = await _dio.get<List<int>>(fileUrl,
+        options: Options(responseType: ResponseType.bytes));
+    _ensureOk(res);
+    await File(savePath).writeAsBytes(res.data!);
   }
 
   Future<dynamic> call(String method, {Map<String, Object?>? args, bool post = false}) async {

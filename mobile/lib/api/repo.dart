@@ -94,6 +94,42 @@ class Repo {
   Future<void> addComment(String task, String content) =>
       api.createDoc('Hive Task Comment', {'task': task, 'content': content});
 
+  // ------------------------------------------------------------- attachments
+  Future<List<Attachment>> attachments(String task) async {
+    final rows = await api.getList('File',
+        fields: ['name', 'file_name', 'file_url', 'file_size', 'is_private'],
+        filters: [
+          ['attached_to_doctype', '=', 'Hive Task'],
+          ['attached_to_name', '=', task],
+        ],
+        orderBy: 'creation desc');
+    return rows.map(Attachment.new).toList();
+  }
+
+  Future<void> uploadAttachment(String task, String path, String fileName) =>
+      api.uploadFile(
+          filePath: path, fileName: fileName, doctype: 'Hive Task', docname: task);
+
+  Future<void> deleteAttachment(String fileDocName) => api.deleteDoc('File', fileDocName);
+
+  // -------------------------------------------------------------- assignment
+  Future<List<Assignee>> assigneesOf(String task) async {
+    final all = await taskAssignees();
+    return (all[task] ?? const []).map(Assignee.new).toList();
+  }
+
+  Future<void> assign(String task, List<String> users) => api.call(
+        'frappe.desk.form.assign_to.add',
+        post: true,
+        args: {'doctype': 'Hive Task', 'name': task, 'assign_to': users, 'notify': 0},
+      );
+
+  Future<void> unassign(String task, String user) => api.call(
+        'frappe.desk.form.assign_to.remove',
+        post: true,
+        args: {'doctype': 'Hive Task', 'name': task, 'assign_to': user},
+      );
+
   // ------------------------------------------------------------------ notes
   Future<List<Note>> notes() async {
     final rows = await api.getList('Hive Note',

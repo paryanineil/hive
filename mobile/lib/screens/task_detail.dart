@@ -1,4 +1,7 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 
 import '../main.dart';
@@ -18,6 +21,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   Task? _task;
   List<Comment> _comments = [];
   List<ChecklistTemplate> _templates = [];
+  List<Attachment> _attachments = [];
+  List<Assignee> _assignees = [];
+  List<Member> _members = [];
   String? _error;
   final _commentCtl = TextEditingController();
   bool _sendingComment = false;
@@ -33,17 +39,32 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       final task = await repo.task(widget.taskName);
       List<Comment> comments = [];
       List<ChecklistTemplate> templates = [];
+      List<Attachment> attachments = [];
+      List<Assignee> assignees = [];
+      List<Member> members = [];
       try {
         comments = await repo.comments(widget.taskName);
       } catch (_) {}
       try {
         templates = await repo.checklistTemplates();
       } catch (_) {}
+      try {
+        attachments = await repo.attachments(widget.taskName);
+      } catch (_) {}
+      try {
+        assignees = await repo.assigneesOf(widget.taskName);
+      } catch (_) {}
+      try {
+        members = await repo.members();
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _task = task;
         _comments = comments;
         _templates = templates;
+        _attachments = attachments;
+        _assignees = assignees;
+        _members = members;
         _error = null;
       });
     } catch (e) {
@@ -156,6 +177,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         onSave: _saveChecklist,
                       ),
                       const SizedBox(height: 20),
+                      _assigneeSection(),
+                      const SizedBox(height: 20),
+                      _attachmentSection(),
+                      const SizedBox(height: 20),
                       Text('Comments (${_comments.length})',
                           style: const TextStyle(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 6),
@@ -234,6 +259,212 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   ),
                 ),
     );
+  }
+
+  void _toast(Object e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  Widget _assigneeSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          const Text('Assignees', style: TextStyle(fontWeight: FontWeight.w700)),
+          const Spacer(),
+          TextButton.icon(
+            icon: const Icon(Icons.person_add_alt, size: 16, color: kMuted),
+            label: const Text('Add', style: TextStyle(color: kMuted, fontSize: 12)),
+            onPressed: _pickAssignee,
+          ),
+        ]),
+        if (_assignees.isEmpty)
+          const Text('Unassigned', style: TextStyle(color: kMuted, fontSize: 13))
+        else
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final a in _assignees)
+                Chip(
+                  avatar: CircleAvatar(
+                    backgroundColor: kOrange,
+                    child: Text(
+                      a.displayName.isNotEmpty ? a.displayName[0].toUpperCase() : '?',
+                      style: const TextStyle(fontSize: 11, color: Colors.white),
+                    ),
+                  ),
+                  label: Text(a.displayName),
+                  deleteIcon: const Icon(Icons.close, size: 15),
+                  onDeleted: () async {
+                    try {
+                      await repo.unassign(widget.taskName, a.member);
+                      await _load();
+                    } catch (e) {
+                      _toast(e);
+                    }
+                  },
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  Future<void> _pickAssignee() async {
+    final current = _assignees.map((a) => a.member).toSet();
+    final candidates =
+        _members.where((m) => !current.contains(m.name)).toList();
+    if (candidates.isEmpty) {
+      _toast('Everyone is already assigned');
+      return;
+    }
+    final picked = await showModalBottomSheet<Member>(
+      context: context,
+      backgroundColor: kCard,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(14),
+              child:
+                  Text('Assign to', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+            for (final m in candidates)
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: kOrange,
+                  child: Text(
+                    m.displayName.isNotEmpty ? m.displayName[0].toUpperCase() : '?',
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                ),
+                title: Text(m.displayName),
+                subtitle: Text(m.name,
+                    style: const TextStyle(color: kMuted, fontSize: 11)),
+                onTap: () => Navigator.pop(ctx, m),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    try {
+      await repo.assign(widget.taskName, [picked.name]);
+      await _load();
+    } catch (e) {
+      _toast(e);
+    }
+  }
+
+  Widget _attachmentSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          const Text('Attachments', style: TextStyle(fontWeight: FontWeight.w700)),
+          const Spacer(),
+          TextButton.icon(
+            icon: const Icon(Icons.attach_file, size: 16, color: kMuted),
+            label: const Text('Upload', style: TextStyle(color: kMuted, fontSize: 12)),
+            onPressed: _upload,
+          ),
+        ]),
+        if (_attachments.isEmpty)
+          const Text('No attachments', style: TextStyle(color: kMuted, fontSize: 13))
+        else
+          for (final f in _attachments)
+            Card(
+              margin: const EdgeInsets.only(bottom: 6),
+              child: ListTile(
+                dense: true,
+                leading: Icon(_iconFor(f.fileName), color: kOrange, size: 20),
+                title: Text(f.fileName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13.5)),
+                subtitle: Text(_fmtSize(f.size),
+                    style: const TextStyle(color: kMuted, fontSize: 11)),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 18, color: kMuted),
+                  onPressed: () => _deleteAttachment(f),
+                ),
+                onTap: () => _openAttachment(f),
+              ),
+            ),
+      ],
+    );
+  }
+
+  IconData _iconFor(String name) {
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+    return switch (ext) {
+      'png' || 'jpg' || 'jpeg' || 'gif' || 'webp' => Icons.image_outlined,
+      'pdf' => Icons.picture_as_pdf_outlined,
+      'doc' || 'docx' => Icons.description_outlined,
+      'xls' || 'xlsx' || 'csv' => Icons.table_chart_outlined,
+      'zip' || 'rar' || '7z' => Icons.folder_zip_outlined,
+      _ => Icons.insert_drive_file_outlined,
+    };
+  }
+
+  String _fmtSize(int bytes) {
+    if (bytes <= 0) return '';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  Future<void> _upload() async {
+    final result = await FilePicker.platform.pickFiles();
+    final path = result?.files.single.path;
+    if (path == null) return;
+    final name = result!.files.single.name;
+    try {
+      _toast('Uploading $name…');
+      await repo.uploadAttachment(widget.taskName, path, name);
+      await _load();
+    } catch (e) {
+      _toast(e);
+    }
+  }
+
+  Future<void> _openAttachment(Attachment f) async {
+    try {
+      // Private files need the session cookie, so download through the API
+      // client into the cache and open locally.
+      final dir = await getTemporaryDirectory();
+      final path = '${dir.path}/${f.fileName}';
+      await api.downloadFile(f.fileUrl, path);
+      await OpenFilex.open(path);
+    } catch (e) {
+      _toast(e);
+    }
+  }
+
+  Future<void> _deleteAttachment(Attachment f) async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: Text('Delete ${f.fileName}?'),
+        content: const Text('The file is removed permanently.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (yes != true) return;
+    try {
+      await repo.deleteAttachment(f.name);
+      await _load();
+    } catch (e) {
+      _toast(e);
+    }
   }
 
   Widget _statusPicker(Task t) => DropdownButtonFormField<String>(

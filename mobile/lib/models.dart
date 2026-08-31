@@ -83,3 +83,19 @@ class Comment {
   String get postedBy => (raw['posted_by'] as String?) ?? '';
   String? get creation => raw['creation'] as String?;
 }
+
+class Attachment {
+  Attachment(this.raw);
+  final Map<String, dynamic> raw;
+  String get name => raw['name'] as String;
+  String get fileName => (raw['file_name'] as String?) ?? name;
+  String get fileUrl => (raw['file_url'] as String?) ?? '';
+  int get size => (raw['file_size'] as num? ?? 0).toInt();
+}
+
+class Assignee {
+  Assignee(this.raw);
+  final Map<String, dynamic> raw;
+  String get member => (raw['member'] as String?) ?? '';
+  String get displayName => (raw['member_name'] as String?) ?? member;
+}
