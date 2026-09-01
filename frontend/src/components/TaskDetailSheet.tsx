@@ -60,6 +60,7 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, Command
 import { DatePickerField } from "@/components/DatePickerField"
 import { toast } from "sonner"
 import { getFrappeErrorMessage } from "@/lib/frappeError"
+import { enqueueTaskWrite } from "@/lib/taskWriteQueue"
 import { LazyTiptapEditor } from "@/components/LazyTiptapEditor"
 import { useUser } from "@/context/UserContext"
 import { TaskCommentsSection } from "@/components/TaskCommentsSection"
@@ -331,22 +332,27 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
     setSaving(true)
     if (silent) setAutosaveStatus("saving")
     try {
-      await updateDoc("Hive Task", task.name, {
-        title,
-        description,
-        status,
-        priority,
-        size: size || null,
-        project,
-        milestone: milestone || null,
-        depends_on: dependsOn || null,
-        pr_link: prLink || null,
-        due_date: dueDate ? format(dueDate, "yyyy-MM-dd") : null,
-        start_date: startDate ? format(startDate, "yyyy-MM-dd") : null,
-        completed_on: completedOn ? format(completedOn, "yyyy-MM-dd") : null,
-        recurrence_frequency: recurrenceFrequency || null,
-        recurrence_end_date: recurrenceFrequency && recurrenceEndDate ? format(recurrenceEndDate, "yyyy-MM-dd") : null,
-      })
+      // Serialized with checklist saves: Frappe's update rewrites all child
+      // tables from the document it loaded, so this save overlapping a
+      // checklist save would revert the checklist to a stale snapshot.
+      await enqueueTaskWrite(task.name, () =>
+        updateDoc("Hive Task", task.name, {
+          title,
+          description,
+          status,
+          priority,
+          size: size || null,
+          project,
+          milestone: milestone || null,
+          depends_on: dependsOn || null,
+          pr_link: prLink || null,
+          due_date: dueDate ? format(dueDate, "yyyy-MM-dd") : null,
+          start_date: startDate ? format(startDate, "yyyy-MM-dd") : null,
+          completed_on: completedOn ? format(completedOn, "yyyy-MM-dd") : null,
+          recurrence_frequency: recurrenceFrequency || null,
+          recurrence_end_date: recurrenceFrequency && recurrenceEndDate ? format(recurrenceEndDate, "yyyy-MM-dd") : null,
+        }),
+      )
       userEditedRef.current = false
       if (silent) {
         setAutosaveStatus("saved")

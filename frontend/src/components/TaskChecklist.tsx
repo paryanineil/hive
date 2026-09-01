@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { enqueueTaskWrite } from "@/lib/taskWriteQueue"
 import type { HiveTaskChecklistItem } from "@/types"
 
 interface TaskChecklistProps {
@@ -30,12 +31,21 @@ export function TaskChecklist({ taskName, items, readOnly = false, onChanged }: 
   const [saving, setSaving] = useState(false)
   const { updateDoc } = useFrappeUpdateDoc()
 
-  // Re-sync when a different task is opened.
+  // Adopt the server value when it changes — the component often mounts before
+  // the full task doc has loaded (items=[]), and editing from that stale empty
+  // copy would wipe the real checklist. Skipped while our own save is in
+  // flight so the optimistic update isn't clobbered.
+  const itemsKey = useMemo(() => JSON.stringify(items.map((r) => [r.content, r.completed])), [items])
   const [syncedFor, setSyncedFor] = useState(taskName)
+  const [syncedKey, setSyncedKey] = useState(itemsKey)
   if (syncedFor !== taskName) {
     setSyncedFor(taskName)
+    setSyncedKey(itemsKey)
     setRows(items)
     setDraft("")
+  } else if (syncedKey !== itemsKey && !saving) {
+    setSyncedKey(itemsKey)
+    setRows(items)
   }
 
   const done = useMemo(() => rows.filter((r) => r.completed).length, [rows])
@@ -45,9 +55,11 @@ export function TaskChecklist({ taskName, items, readOnly = false, onChanged }: 
     setRows(next)
     setSaving(true)
     try {
-      await updateDoc("Hive Task", taskName, {
-        checklist: next.map((r) => ({ content: r.content, completed: r.completed })),
-      })
+      await enqueueTaskWrite(taskName, () =>
+        updateDoc("Hive Task", taskName, {
+          checklist: next.map((r) => ({ content: r.content, completed: r.completed })),
+        }),
+      )
       onChanged?.()
     } catch {
       setRows(previous)   // roll back the optimistic update
