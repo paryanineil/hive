@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../notifications.dart';
+
 import 'dashboard.dart';
 import 'notes.dart';
 import 'projects.dart';
@@ -16,6 +18,13 @@ class ShellScreen extends StatefulWidget {
 
 class _ShellScreenState extends State<ShellScreen> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Ask for notification permission and schedule the background poll.
+    AppNotifications.setupIfEnabled();
+  }
 
   @override
   Widget build(BuildContext context) {

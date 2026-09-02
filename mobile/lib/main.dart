@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations;
 
+import 'package:workmanager/workmanager.dart';
+
 import 'api/client.dart';
 import 'api/repo.dart';
+import 'notifications.dart';
 import 'screens/login.dart';
 import 'screens/shell.dart';
 import 'theme.dart';
@@ -15,6 +18,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   api = await ApiClient.create();
   repo = Repo(api);
+  await Workmanager().initialize(callbackDispatcher);
   runApp(const IgnitionApp());
 }
 

@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../api/client.dart';
 import '../celebration.dart';
+import '../notifications.dart';
 import '../main.dart';
 import '../theme.dart';
 
@@ -17,6 +18,7 @@ class MoreScreen extends StatefulWidget {
 class _MoreScreenState extends State<MoreScreen> {
   String? _user;
   bool _celebrate = true;
+  bool _notifications = true;
 
   @override
   void initState() {
@@ -26,6 +28,9 @@ class _MoreScreenState extends State<MoreScreen> {
     }).catchError((_) {});
     Celebration.enabled().then((on) {
       if (mounted) setState(() => _celebrate = on);
+    });
+    AppNotifications.enabled().then((on) {
+      if (mounted) setState(() => _notifications = on);
     });
   }
 
@@ -69,6 +74,19 @@ class _MoreScreenState extends State<MoreScreen> {
           const SizedBox(height: 8),
           Card(
             child: Column(children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.notifications_outlined, color: kMuted),
+                title: const Text('Notifications'),
+                subtitle: const Text('New assignments and a daily due-task summary',
+                    style: TextStyle(color: kMuted, fontSize: 12)),
+                activeThumbColor: kOrange,
+                value: _notifications,
+                onChanged: (on) {
+                  setState(() => _notifications = on);
+                  AppNotifications.setEnabled(on);
+                },
+              ),
+              const Divider(height: 1),
               SwitchListTile(
                 secondary: const Icon(Icons.celebration_outlined, color: kMuted),
                 title: const Text('Celebrations'),
