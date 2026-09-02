@@ -4,6 +4,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 
+import '../celebration.dart';
 import '../main.dart';
 import '../models.dart';
 import '../theme.dart';
@@ -474,8 +475,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         items: [
           for (final s in taskStatuses) DropdownMenuItem(value: s, child: Text(s)),
         ],
-        onChanged: (v) {
-          if (v != null) _update({'status': v});
+        onChanged: (v) async {
+          if (v == null) return;
+          final wasDone = t.status == 'Done';
+          await _update({'status': v});
+          // Celebrate only if the save actually stuck (checklist gate can reject it).
+          if (v == 'Done' && !wasDone && _task?.status == 'Done' && mounted) {
+            Celebration.show(context);
+          }
         },
       );
 

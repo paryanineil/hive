@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api/client.dart';
+import '../celebration.dart';
 import '../main.dart';
 import '../theme.dart';
 
@@ -15,6 +16,7 @@ class MoreScreen extends StatefulWidget {
 
 class _MoreScreenState extends State<MoreScreen> {
   String? _user;
+  bool _celebrate = true;
 
   @override
   void initState() {
@@ -22,6 +24,9 @@ class _MoreScreenState extends State<MoreScreen> {
     api.loggedUser().then((u) {
       if (mounted) setState(() => _user = u);
     }).catchError((_) {});
+    Celebration.enabled().then((on) {
+      if (mounted) setState(() => _celebrate = on);
+    });
   }
 
   @override
@@ -58,6 +63,24 @@ class _MoreScreenState extends State<MoreScreen> {
                 onTap: () => launchUrl(
                     Uri.parse('https://github.com/paryanineil/hive/issues/new'),
                     mode: LaunchMode.externalApplication),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: Column(children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.celebration_outlined, color: kMuted),
+                title: const Text('Celebrations'),
+                subtitle: const Text('Confetti and sound when you complete a task',
+                    style: TextStyle(color: kMuted, fontSize: 12)),
+                activeThumbColor: kOrange,
+                value: _celebrate,
+                onChanged: (on) {
+                  setState(() => _celebrate = on);
+                  Celebration.setEnabled(on);
+                  if (on) Celebration.show(context);
+                },
               ),
             ]),
           ),

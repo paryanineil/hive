@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../celebration.dart';
 import '../main.dart';
 import '../models.dart';
 import '../theme.dart';
@@ -404,6 +405,7 @@ class _KanbanColumn extends StatelessWidget {
       onAcceptWithDetails: (d) async {
         try {
           await repo.updateTask(d.data.name, {'status': status});
+          if (status == 'Done' && context.mounted) Celebration.show(context);
         } catch (e) {
           if (context.mounted) {
             ScaffoldMessenger.of(context)
