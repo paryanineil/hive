@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 // Plain data models for the Hive doctypes the app uses.
 
 class Task {
@@ -15,6 +17,18 @@ class Task {
   String get owner => (raw['owner'] as String?) ?? '';
   String? get creation => raw['creation'] as String?;
   String? get milestone => raw['milestone'] as String?;
+  String? get completedOn => raw['completed_on'] as String?;
+
+  /// Frappe stores assignments as a JSON array string in `_assign`.
+  List<String> get assignees {
+    final a = raw['_assign'];
+    if (a is! String || a.isEmpty) return const [];
+    try {
+      return (jsonDecode(a) as List).cast<String>();
+    } catch (_) {
+      return const [];
+    }
+  }
 
   List<ChecklistItem> get checklist =>
       ((raw['checklist'] as List?) ?? const []).map((e) => ChecklistItem(Map.from(e as Map))).toList();

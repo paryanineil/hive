@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'dashboard.dart';
 import 'notes.dart';
 import 'projects.dart';
 import 'more.dart';
@@ -19,6 +20,7 @@ class _ShellScreenState extends State<ShellScreen> {
   @override
   Widget build(BuildContext context) {
     final pages = [
+      const DashboardScreen(),
       const TasksScreen(),
       const ProjectsScreen(),
       const NotesScreen(),
@@ -30,6 +32,7 @@ class _ShellScreenState extends State<ShellScreen> {
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: const [
+          NavigationDestination(icon: Icon(Icons.space_dashboard_outlined), label: 'Home'),
           NavigationDestination(icon: Icon(Icons.check_circle_outline), label: 'Tasks'),
           NavigationDestination(icon: Icon(Icons.folder_outlined), label: 'Projects'),
           NavigationDestination(icon: Icon(Icons.sticky_note_2_outlined), label: 'Notes'),
