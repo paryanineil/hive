@@ -117,8 +117,8 @@ const PRIORITY_COLOR: Record<string, string> = {
 
 /** A draggable task chip. Also a drop target, so chips can be reordered onto each other. */
 function DraggableChip({
-  id, task, color, onClick, time,
-}: { id: string; task: HiveTask; color: string; onClick: () => void; time?: string }) {
+  id, task, color, onClick, time, dense,
+}: { id: string; task: HiveTask; color: string; onClick: () => void; time?: string; dense?: boolean }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id })
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id })
   const dueState = getDueState(task.due_date, task.status, task.due_time)
@@ -131,7 +131,8 @@ function DraggableChip({
         task.creation ? ` · created ${format(new Date(task.creation), "MMM d, yyyy")} by ${task.owner}` : ""
       }`}
       className={cn(
-        "flex w-full items-center gap-1.5 rounded bg-card px-1.5 py-1 text-left text-xs shadow-sm ring-1 ring-border transition-colors hover:bg-accent",
+        "flex w-full items-center gap-1.5 rounded bg-card px-1.5 text-left text-xs shadow-sm ring-1 ring-border transition-colors hover:bg-accent",
+        dense ? "py-0.5" : "py-1",
         isDragging && "opacity-40",
         isOver && "ring-2 ring-primary",
         // Overdue chips carry a red edge so they stand out at a glance.
@@ -446,7 +447,7 @@ export function TaskCalendar({
     [weekStartsOn],
   )
 
-  const chip = (task: HiveTask, dayKey: string) => (
+  const chip = (task: HiveTask, dayKey: string, dense = false) => (
     <DraggableChip
       key={`${dayKey}|${task.name}`}
       id={`${dayKey}|${task.name}`}
@@ -454,6 +455,7 @@ export function TaskCalendar({
       color={colorFor(task)}
       onClick={() => onTaskClick(task)}
       time={timeOnDay(task, dayKey)}
+      dense={dense}
     />
   )
 
@@ -622,7 +624,7 @@ export function TaskCalendar({
           days={mode === "week" ? weekDays : dayOnly}
           tasksForDay={dayTasks}
           colorFor={colorFor}
-          renderChip={chip}
+          renderChip={(t, dayKey) => chip(t, dayKey, true)}
           onTaskClick={onTaskClick}
           registerColumn={registerColumn}
         />

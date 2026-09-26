@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { format, isToday } from "date-fns"
 import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Alert02Icon } from "@hugeicons/core-free-icons"
+import { Alert02Icon, ArrowDown01Icon, ArrowUp01Icon } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import { getDueState } from "@/lib/dueDate"
 import { formatTime, timeToMinutes } from "@/lib/taskTime"
@@ -159,13 +159,31 @@ function TimedBlock({
   )
 }
 
-function AllDayLane({ dayKey, children }: { dayKey: string; children: ReactNode }) {
+/**
+ * All-day lane sizing: tall enough for 8 of the calendar's dense (20px) chips
+ * before it scrolls, or a single row when collapsed. 4px gaps, 4px padding.
+ */
+const LANE_CHIP_PX = 20
+const LANE_ROWS = 8
+const laneHeight = (rows: number) => rows * LANE_CHIP_PX + (rows - 1) * 4 + 8 + 2
+const LANE_COLLAPSED_KEY = "hive:calendar-allday-collapsed"
+
+function readLaneCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(LANE_COLLAPSED_KEY) === "1"
+  } catch {
+    return false
+  }
+}
+
+function AllDayLane({ dayKey, maxHeight, children }: { dayKey: string; maxHeight: number; children: ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: `day:${dayKey}` })
   return (
     <div
       ref={setNodeRef}
+      style={{ maxHeight }}
       className={cn(
-        "max-h-28 min-h-9 space-y-1 overflow-y-auto border-r p-1 last:border-r-0",
+        "min-h-9 space-y-1 overflow-y-auto border-r p-1 last:border-r-0",
         isOver && "bg-primary/10 ring-1 ring-inset ring-primary/40",
       )}
     >
@@ -219,6 +237,18 @@ export function TaskTimeGrid({ days, tasksForDay, colorFor, renderChip, onTaskCl
   const [fillPx, setFillPx] = useState<number | null>(null)
   const [hourPx, setHourPx] = useState<number | null>(null)
   const hp = hourPx ?? FALLBACK_HOUR_PX
+  // Collapsing the all-day lane hands its height back to the hour rows.
+  const [laneCollapsed, setLaneCollapsed] = useState(readLaneCollapsed)
+  const toggleLane = () => {
+    setLaneCollapsed((prev) => {
+      try {
+        window.localStorage.setItem(LANE_COLLAPSED_KEY, prev ? "0" : "1")
+      } catch {
+        // ignore storage failures (e.g. private mode)
+      }
+      return !prev
+    })
+  }
   const [now, setNow] = useState(() => new Date())
   const single = days.length === 1
 
@@ -234,6 +264,8 @@ export function TaskTimeGrid({ days, tasksForDay, colorFor, renderChip, onTaskCl
     }),
     [days, tasksForDay],
   )
+  const laneMax = laneHeight(laneCollapsed ? 1 : LANE_ROWS)
+  const hiddenAllDay = laneCollapsed ? Math.max(0, ...layouts.map((l) => l.allDay.length - 1)) : 0
 
   // Scroll to the first timed task (or now, or 8 AM) whenever the visible days change.
   const daysKey = layouts.map((l) => l.dayKey).join(",")
@@ -305,11 +337,21 @@ export function TaskTimeGrid({ days, tasksForDay, colorFor, renderChip, onTaskCl
 
             {/* All-day lane */}
             <div className="grid border-b shadow-sm" style={{ gridTemplateColumns: cols }}>
-              <div className="flex items-start justify-end border-r px-1.5 py-2 text-[10px] leading-none text-muted-foreground">
-                All day
+              <div className="flex flex-col items-end gap-1 border-r px-1.5 py-2 text-[10px] leading-none text-muted-foreground">
+                <span>All day</span>
+                <button
+                  type="button"
+                  onClick={toggleLane}
+                  title={laneCollapsed ? "Show all-day tasks" : "Collapse all-day row"}
+                  aria-label={laneCollapsed ? "Show all-day tasks" : "Collapse all-day row"}
+                  className="flex items-center gap-0.5 rounded px-0.5 py-0.5 hover:bg-accent hover:text-foreground"
+                >
+                  <HugeiconsIcon icon={laneCollapsed ? ArrowDown01Icon : ArrowUp01Icon} strokeWidth={2} className="size-3" />
+                  {hiddenAllDay > 0 && <span>+{hiddenAllDay}</span>}
+                </button>
               </div>
               {layouts.map(({ dayKey, allDay }) => (
-                <AllDayLane key={dayKey} dayKey={dayKey}>
+                <AllDayLane key={dayKey} dayKey={dayKey} maxHeight={laneMax}>
                   {allDay.map((t) => renderChip(t, dayKey))}
                 </AllDayLane>
               ))}
