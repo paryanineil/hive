@@ -31,6 +31,8 @@ import os
 import requests
 import frappe
 
+from bwh_hive.bwh_hive.due import time_to_seconds
+
 SITE = os.environ.get("HIVE_SITE", "pms.localhost")
 SITES_PATH = os.environ.get("HIVE_SITES_PATH", "/home/kamal/benches/hive/sites")
 API_BASE = "https://api.telegram.org"
@@ -213,6 +215,42 @@ def parse_date(text: str):
     return None
 
 
+TIME_PRESETS = {"morning": "09:00:00", "afternoon": "12:00:00", "evening": "18:00:00", "night": "21:00:00"}
+TIME_BUTTONS = [["Morning 9 AM", "Afternoon 12 PM"], ["Evening 6 PM", "Night 9 PM"], ["Skip"]]
+
+
+def parse_time(text: str):
+    """"HH:MM:SS" for a preset name or a typed time (18:30, 6pm, 6:30 pm); "" to skip; None if unreadable."""
+    t = (text or "").strip().lower()
+    if t in ("skip", "-", "none", ""):
+        return ""
+    first = t.split()[0]
+    if first in TIME_PRESETS:
+        return TIME_PRESETS[first]
+    m = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", t)
+    if not m:
+        return None
+    h, mins, ampm = int(m.group(1)), int(m.group(2) or 0), m.group(3)
+    if ampm:
+        if not 1 <= h <= 12:
+            return None
+        h = h % 12 + (12 if ampm == "pm" else 0)
+    if h > 23 or mins > 59:
+        return None
+    return f"{h:02d}:{mins:02d}:00"
+
+
+def fmt_time(value) -> str:
+    """"6 PM" / "6:30 PM" for a stored Time value; "" when unset."""
+    secs = time_to_seconds(value)
+    if secs is None:
+        return ""
+    h, m = secs // 3600, (secs % 3600) // 60
+    suffix = "AM" if h < 12 else "PM"
+    h12 = h % 12 or 12
+    return f"{h12}:{m:02d} {suffix}" if m else f"{h12} {suffix}"
+
+
 def chunk(lst, n):
     return [lst[i:i + n] for i in range(0, len(lst), n)]
 
@@ -251,15 +289,16 @@ def cmd_tasks(chat_id):
     rows = frappe.get_all(
         "Hive Task",
         filters={"is_archived": 0, "status": ["!=", "Done"]},
-        fields=["name", "title", "status", "priority", "project", "due_date"],
-        order_by="due_date asc", limit_page_length=30,
+        fields=["name", "title", "status", "priority", "project", "due_date", "due_time"],
+        order_by="due_date asc, due_time asc", limit_page_length=30,
     )
     if not rows:
         send(chat_id, "No open tasks. 🎉")
         return
     lines = ["<b>Open tasks</b>"]
     for t in rows:
-        due = f" · due {t.due_date}" if t.due_date else ""
+        at = fmt_time(t.due_time)
+        due = f" · due {t.due_date}{' ' + at if at else ''}" if t.due_date else ""
         lines.append(f"• <b>{esc(t.title)}</b> — {esc(t.status)}/{esc(t.priority)}{esc(due)}")
     send(chat_id, "\n".join(lines))
 
@@ -403,6 +442,19 @@ def handle_flow(state_key, chat_id, text) -> bool:
                 send(chat_id, "Didn't get that date. Try YYYY-MM-DD, today, tomorrow, or Skip.")
                 return True
             data["due_date"] = d
+            if d:
+                st["step"] = "due_time"
+                send(chat_id, "Time? (pick one, type e.g. 18:30 or 6pm, or Skip)", buttons=TIME_BUTTONS)
+            else:
+                st["step"] = "priority"
+                send(chat_id, "Priority?", buttons=[["Low", "Medium"], ["High", "Urgent"]])
+        elif step == "due_time":
+            tm = parse_time(text)
+            if tm is None:
+                send(chat_id, "Didn't get that time. Try 18:30, 6pm, a button, or Skip.",
+                     buttons=TIME_BUTTONS)
+                return True
+            data["due_time"] = tm
             st["step"] = "priority"
             send(chat_id, "Priority?", buttons=[["Low", "Medium"], ["High", "Urgent"]])
         elif step == "priority":
@@ -422,7 +474,8 @@ def handle_flow(state_key, chat_id, text) -> bool:
                  "<b>Confirm new task</b>\n"
                  f"Title: {esc(data.get('title'))}\n"
                  f"Project: {esc(_project_label(data))}\n"
-                 f"Due: {esc(data.get('due_date') or '—')}\n"
+                 f"Due: {esc(data.get('due_date') or '—')}"
+                 f"{esc(' ' + fmt_time(data['due_time'])) if data.get('due_time') else ''}\n"
                  f"Priority: {esc(data.get('priority'))}\n"
                  f"Assignee: {esc(data.get('assignee_user') or '—')}",
                  buttons=[["✅ Create", "❌ Cancel"]])
@@ -473,6 +526,8 @@ def create_task(data) -> str:
     doc.priority = data.get("priority") or PRIORITY_DEFAULT
     if data.get("due_date"):
         doc.due_date = data["due_date"]
+        if data.get("due_time"):
+            doc.due_time = data["due_time"]
     doc.insert(ignore_permissions=True)
     frappe.db.commit()
     if data.get("assignee_user"):

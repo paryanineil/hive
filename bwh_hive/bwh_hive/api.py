@@ -4,6 +4,8 @@ from datetime import timedelta
 import frappe
 from frappe.utils import getdate, nowdate
 
+from bwh_hive.bwh_hive.due import is_overdue, now_parts, time_to_seconds
+
 
 @frappe.whitelist(methods=["POST"])
 def invite_member(email: str, role: str = "Hive Team"):
@@ -76,7 +78,7 @@ def get_my_dashboard():
 			"status": ["not in", ["Done", "Someday"]],
 			"is_archived": 0,
 		},
-		fields=["name", "title", "project", "status", "priority", "due_date", "is_internal"],
+		fields=["name", "title", "project", "status", "priority", "due_date", "due_time", "is_internal"],
 		order_by="priority desc, modified desc",
 		limit=50,
 	)
@@ -177,21 +179,24 @@ def get_my_dashboard():
 def get_my_overdue_tasks():
 	"""Return tasks assigned to the current user that are past their due date and not done."""
 	user = frappe.session.user
-	today = nowdate()
+	now = now_parts()
 
-	tasks = frappe.get_all(
+	# Fetch through today, then apply the time-aware rule (due today with a
+	# passed due time also counts).
+	candidates = frappe.get_all(
 		"Hive Task",
 		filters=[
 			["_assign", "like", f"%{user}%"],
 			["due_date", "is", "set"],
-			["due_date", "<", today],
+			["due_date", "<=", now[0]],
 			["status", "not in", ["Done", "Someday"]],
 			["is_archived", "=", 0],
 		],
-		fields=["name", "title", "project", "status", "priority", "due_date"],
-		order_by="due_date asc",
-		limit=50,
+		fields=["name", "title", "project", "status", "priority", "due_date", "due_time"],
+		order_by="due_date asc, due_time asc",
+		limit=100,
 	)
+	tasks = [t for t in candidates if is_overdue(t.due_date, t.due_time, t.status, now)][:50]
 
 	# Enrich with project titles
 	_enrich_tasks_with_project_titles(tasks)
@@ -556,18 +561,23 @@ def get_team_stats(period: str = "week"):
 	)
 	_enrich_tasks_with_project_titles(completed_tasks)
 
-	# Overdue tasks (not done, past due date)
-	overdue_tasks = frappe.get_all(
-		"Hive Task",
-		filters={
-			"due_date": ["<", today],
-			"status": ["not in", ["Done", "Someday"]],
-			"is_archived": 0,
-		},
-		fields=["name", "title", "project", "priority", "due_date", "status", "_assign"],
-		order_by="due_date asc",
-		limit=500,
-	)
+	# Overdue tasks (not done, past due date/time)
+	now = now_parts()
+	overdue_tasks = [
+		t
+		for t in frappe.get_all(
+			"Hive Task",
+			filters={
+				"due_date": ["<=", now[0]],
+				"status": ["not in", ["Done", "Someday"]],
+				"is_archived": 0,
+			},
+			fields=["name", "title", "project", "priority", "due_date", "due_time", "status", "_assign"],
+			order_by="due_date asc, due_time asc",
+			limit=500,
+		)
+		if is_overdue(t.due_date, t.due_time, t.status, now)
+	]
 	_enrich_tasks_with_project_titles(overdue_tasks)
 
 	# Map tasks to users
@@ -628,7 +638,7 @@ def get_member_tasks(user: str):
 			"status": ["not in", ["Done", "Someday"]],
 			"is_archived": 0,
 		},
-		fields=["name", "title", "project", "status", "priority", "due_date"],
+		fields=["name", "title", "project", "status", "priority", "due_date", "due_time"],
 		limit=100,
 	)
 	task_map = {t.name: t for t in all_tasks}
@@ -829,7 +839,9 @@ def get_project_activity(project: str, limit: int = 100):
 						"milestone",
 						"assigned_to",
 						"due_date",
+						"due_time",
 						"start_date",
+						"start_time",
 						"completed_on",
 						"size",
 						"uat_status",
@@ -1022,8 +1034,10 @@ def get_smart_list_counts():
 	"""Badge counts for the sidebar's smart lists.
 
 	One call instead of a query per badge, since the sidebar is always mounted.
-	"Overdue" matches the frontend's rule (due strictly before today, excluding
-	Done/Someday) so the badge and the filtered list can't disagree.
+	"Overdue" matches the frontend's rule (see due.py: due before today, or due
+	today with a passed due time; excluding Done/Someday) so the badge and the
+	filtered list can't disagree. A task whose time has passed moves from
+	My Day to Overdue, same as in the list.
 	"""
 	user = frappe.session.user
 	today = nowdate()
@@ -1032,9 +1046,19 @@ def get_smart_list_counts():
 	def count(**filters):
 		return frappe.db.count("Hive Task", {"is_archived": 0, **filters})
 
+	_, now_secs = now_parts()
+	due_today_times = frappe.get_all(
+		"Hive Task",
+		filters={"is_archived": 0, "due_date": today, "status": ["not in", open_states]},
+		pluck="due_time",
+	)
+	passed_today = sum(
+		1 for t in due_today_times if (secs := time_to_seconds(t)) is not None and secs < now_secs
+	)
+
 	return {
-		"my_day": count(due_date=today, status=["not in", open_states]),
-		"overdue": count(due_date=["<", today], status=["not in", open_states]),
+		"my_day": len(due_today_times) - passed_today,
+		"overdue": count(due_date=["<", today], status=["not in", open_states]) + passed_today,
 		"important": count(priority=["in", ["High", "Urgent"]], status=["not in", open_states]),
 		"planned": count(due_date=["is", "set"], status=["not in", open_states]),
 		"assigned_to_me": count(_assign=["like", f"%{user}%"], status=["not in", open_states]),

@@ -17,11 +17,20 @@ is written as ends_on = the 11th, and read back as due_date = ends_on - 1 day.
 Keeping both directions symmetric is what stops the range drifting a day on
 every sync.
 
+Timed tasks: a task with no times stays an all-day event. With only a due
+time it becomes a one-hour event starting at that time (the deadline); with a
+start time it runs from start to due. Pulled edits map back by the same rules,
+and turning an event all-day in Google clears the task's times.
+
 Enable via Hive Settings: `google_calendar_sync_enabled` + `google_calendar`.
 """
 
+import datetime
+
 import frappe
-from frappe.utils import add_days, getdate
+from frappe.utils import add_days, get_datetime, getdate
+
+from bwh_hive.bwh_hive.due import time_to_seconds
 
 # Set while we are writing one side from the other, so the counterpart hook
 # doesn't bounce the change straight back (Task -> Event -> Task -> ...).
@@ -77,6 +86,46 @@ def _task_dates(task) -> tuple[str, str] | None:
 	return s, e
 
 
+def _as_time(value) -> datetime.time | None:
+	secs = time_to_seconds(value)
+	if secs is None:
+		return None
+	return datetime.time(secs // 3600, (secs % 3600) // 60, secs % 60)
+
+
+def _event_window(task) -> dict | None:
+	"""Event timing for a task, or None when it has no dates."""
+	dates = _task_dates(task)
+	if not dates:
+		return None
+	start, end = dates
+	start_time = _as_time(task.get("start_time")) if task.get("start_date") else None
+	due_time = _as_time(task.get("due_time")) if task.get("due_date") else None
+
+	if not start_time and not due_time:
+		return {
+			"all_day": 1,
+			"starts_on": f"{start} 00:00:00",
+			# Google's all-day end is exclusive; +1 day makes the due date inclusive.
+			"ends_on": f"{add_days(end, 1)} 00:00:00",
+		}
+
+	hour = datetime.timedelta(hours=1)
+	if start_time and due_time:
+		begin = datetime.datetime.combine(start, start_time)
+		finish = datetime.datetime.combine(end, due_time)
+		if finish <= begin:
+			finish = begin + hour
+	elif due_time:
+		begin = datetime.datetime.combine(end, due_time)
+		finish = begin + hour
+	else:
+		begin = datetime.datetime.combine(start, start_time)
+		finish = begin + hour
+	fmt = "%Y-%m-%d %H:%M:%S"
+	return {"all_day": 0, "starts_on": begin.strftime(fmt), "ends_on": finish.strftime(fmt)}
+
+
 def _event_name_for(task_name: str) -> str | None:
 	name = frappe.db.get_value("Hive Task", task_name, "calendar_event")
 	if name and frappe.db.exists("Event", name):
@@ -93,19 +142,15 @@ def task_to_event(doc, method=None):
 	if not calendar:
 		return
 
-	dates = _task_dates(doc)
+	window = _event_window(doc)
 	# Archived or undated tasks shouldn't occupy the calendar.
-	if doc.get("is_archived") or not dates:
+	if doc.get("is_archived") or not window:
 		remove_event(doc)
 		return
 
-	start, end = dates
 	values = {
 		"subject": doc.title,
-		"starts_on": f"{start} 00:00:00",
-		# Google's all-day end is exclusive; +1 day makes the due date inclusive.
-		"ends_on": f"{add_days(end, 1)} 00:00:00",
-		"all_day": 1,
+		**window,
 		"status": "Completed" if doc.get("status") == "Done" else "Open",
 		# Only flag for Google once the calendar is authorized (see _calendar_ready).
 		"sync_with_google_calendar": 1 if _calendar_ready(calendar) else 0,
@@ -170,24 +215,49 @@ def event_to_task(doc, method=None):
 	if not doc.get("starts_on"):
 		return
 
-	start = getdate(doc.starts_on)
-	if doc.get("ends_on"):
-		end = getdate(doc.ends_on)
+	current = frappe.db.get_value("Hive Task", task_name,
+			["start_date", "due_date", "start_time", "due_time", "title"], as_dict=True)
+	if not current:
+		return
+
+	if doc.get("all_day"):
+		start = getdate(doc.starts_on)
+		end = getdate(doc.ends_on) if doc.get("ends_on") else start
 		# Undo the exclusive-end offset for all-day events.
-		if doc.get("all_day"):
+		if doc.get("ends_on"):
 			end = add_days(end, -1)
 		if getdate(end) < start:
 			end = start
+		updates = {"start_date": start, "due_date": getdate(end), "start_time": None, "due_time": None}
 	else:
-		end = start
+		begin = get_datetime(doc.starts_on)
+		finish = get_datetime(doc.ends_on) if doc.get("ends_on") else begin
+		if current.start_time:
+			# Task has a start time: the event spans start -> due.
+			updates = {
+				"start_date": begin.date(),
+				"start_time": begin.time(),
+				"due_date": finish.date(),
+				"due_time": finish.time() if current.due_time else None,
+			}
+		else:
+			# Deadline-style: the event's start is the due moment.
+			updates = {"due_date": begin.date(), "due_time": begin.time()}
+			if current.start_date and getdate(current.start_date) > begin.date():
+				updates["start_date"] = begin.date()
 
-	updates = {"start_date": start, "due_date": getdate(end)}
 	if doc.get("subject"):
 		updates["title"] = doc.subject
 
-	current = frappe.db.get_value("Hive Task", task_name,
-			["start_date", "due_date", "title"], as_dict=True)
-	if current and all(str(current.get(k)) == str(v) for k, v in updates.items()):
+	def same(key, value):
+		cur = current.get(key)
+		if key.endswith("_time"):
+			return time_to_seconds(cur) == time_to_seconds(value)
+		if key.endswith("_date"):
+			return (getdate(cur) if cur else None) == (getdate(value) if value else None)
+		return str(cur) == str(value)
+
+	if all(same(k, v) for k, v in updates.items()):
 		return
 
 	frappe.flags[SYNC_FLAG] = True

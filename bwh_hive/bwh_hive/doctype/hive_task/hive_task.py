@@ -7,6 +7,8 @@ import frappe
 from frappe.model.document import Document
 from frappe.utils import add_days, add_months, getdate, today
 
+from bwh_hive.bwh_hive.due import time_to_seconds
+
 VALID_TRANSITIONS: dict[str, set[str]] = {
 	"Someday": {"Backlog", "To Do", "In Progress", "Done", "Blocked"},
 	"Backlog": {"Someday", "To Do", "In Progress", "Done", "Blocked"},
@@ -74,6 +76,7 @@ class HiveTask(Document):
 		depends_on: DF.Link | None
 		description: DF.TextEditor | None
 		due_date: DF.Date | None
+		due_time: DF.Time | None
 		is_archived: DF.Check
 		is_internal: DF.Check
 		milestone: DF.Link | None
@@ -85,6 +88,7 @@ class HiveTask(Document):
 		recurring_parent: DF.Link | None
 		size: DF.Literal["", "Small", "Medium", "Large"]
 		start_date: DF.Date | None
+		start_time: DF.Time | None
 		status: DF.Literal["Someday", "Backlog", "To Do", "In Progress", "Done", "Blocked"]
 		title: DF.Data
 		uat_approved_by: DF.Link | None
@@ -138,6 +142,22 @@ class HiveTask(Document):
 		# and comparing the two raises TypeError.
 		if self.start_date and self.due_date and getdate(self.start_date) > getdate(self.due_date):
 			frappe.throw("Start date cannot be after due date")
+
+		# A time only means something on its date — clearing the date clears it.
+		if not self.start_date:
+			self.start_time = None
+		if not self.due_date:
+			self.due_time = None
+
+		if (
+			self.start_date
+			and self.due_date
+			and getdate(self.start_date) == getdate(self.due_date)
+			and self.start_time
+			and self.due_time
+			and time_to_seconds(self.start_time) > time_to_seconds(self.due_time)
+		):
+			frappe.throw("Start time cannot be after due time on the same day")
 
 	def _validate_dependency(self):
 		if not self.depends_on:
@@ -198,7 +218,9 @@ class HiveTask(Document):
 				"is_internal": self.is_internal,
 				"description": self.description,
 				"due_date": next_due,
+				"due_time": self.due_time,
 				"start_date": new_start,
+				"start_time": self.start_time if new_start else None,
 				"recurrence_frequency": self.recurrence_frequency,
 				"recurrence_end_date": self.recurrence_end_date,
 				"recurring_parent": parent_name,
