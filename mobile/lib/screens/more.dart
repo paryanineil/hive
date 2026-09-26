@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../api/client.dart';
 import '../celebration.dart';
 import '../notifications.dart';
+import '../task_time.dart';
 import '../main.dart';
 import '../theme.dart';
 
@@ -99,6 +100,15 @@ class _MoreScreenState extends State<MoreScreen> {
                   Celebration.setEnabled(on);
                   if (on) Celebration.show(context);
                 },
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.schedule, color: kMuted),
+                title: const Text('Time shortcuts'),
+                subtitle: const Text('Morning, afternoon, evening and night times',
+                    style: TextStyle(color: kMuted, fontSize: 12)),
+                trailing: const Icon(Icons.chevron_right, color: kMuted),
+                onTap: () => editTimePresets(context),
               ),
             ]),
           ),

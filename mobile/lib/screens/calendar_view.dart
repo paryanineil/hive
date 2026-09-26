@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models.dart';
+import '../task_time.dart';
 import '../theme.dart';
 import '../widgets/task_tile.dart';
 
@@ -17,6 +18,12 @@ class _Span {
   final String from;
   final String to;
   bool covers(String key) => from.compareTo(key) <= 0 && key.compareTo(to) <= 0;
+}
+
+String? _timeOnDay(Task t, String key) {
+  if (t.startTime != null && t.startDate?.substring(0, 10) == key) return t.startTime;
+  if (t.dueTime != null && t.dueDate?.substring(0, 10) == key) return t.dueTime;
+  return null;
 }
 
 List<_Span> _buildSpans(List<Task> tasks) {
@@ -93,7 +100,12 @@ class _CalendarViewState extends State<CalendarView> {
     final spans = _buildSpans(widget.tasks);
     final todayKey = _dayKey(DateTime.now());
     final selectedKey = _dayKey(_selected);
-    final selectedTasks = spans.where((s) => s.covers(selectedKey)).map((s) => s.task).toList();
+    final selectedTasks = spans.where((s) => s.covers(selectedKey)).map((s) => s.task).toList()
+      // Timed tasks first in time order (start time on the start day, due time
+      // on the due day), untimed after.
+      ..sort((a, b) =>
+          (timeToMinutes(_timeOnDay(a, selectedKey)) ?? 24 * 60)
+              .compareTo(timeToMinutes(_timeOnDay(b, selectedKey)) ?? 24 * 60));
 
     // Visible range: the month grid or the single week strip.
     late final DateTime rangeStart;

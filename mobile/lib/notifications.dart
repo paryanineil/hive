@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 
 import 'api/client.dart';
+import 'task_time.dart';
 
 /// Notifications without Firebase: a WorkManager job polls the server every
 /// 15 minutes (Android's minimum) and raises local notifications for
@@ -89,7 +90,7 @@ class AppNotifications {
     final user = await client.loggedUser();
     final open = await client.getList(
       'Hive Task',
-      fields: ['name', 'title', 'due_date', 'status', '_assign'],
+      fields: ['name', 'title', 'due_date', 'due_time', 'status', '_assign'],
       filters: [
         ['status', '!=', 'Done'],
         ['is_archived', '=', 0],
@@ -109,15 +110,23 @@ class AppNotifications {
       }).toList();
 
   /// Summary fragments for [today] (yyyy-MM-dd), e.g. ["2 due today", "1 overdue"].
-  /// Empty when there is nothing worth notifying. Pure, for tests.
-  static List<String> summaryParts(List<Map<String, dynamic>> open, String today) {
+  /// With [nowMinutes], a task due today whose due time has passed counts as
+  /// overdue (the app-wide rule). Empty when there is nothing worth notifying.
+  /// Pure, for tests.
+  static List<String> summaryParts(List<Map<String, dynamic>> open, String today,
+      {int? nowMinutes}) {
     var dueToday = 0, overdue = 0;
     for (final t in open) {
       if (t['status'] == 'Someday') continue;
       final due = (t['due_date'] as String?)?.substring(0, 10);
       if (due == null) continue;
       if (due == today) {
-        dueToday++;
+        final mins = timeToMinutes(t['due_time'] as String?);
+        if (nowMinutes != null && mins != null && mins < nowMinutes) {
+          overdue++;
+        } else {
+          dueToday++;
+        }
       } else if (due.compareTo(today) < 0) {
         overdue++;
       }
@@ -170,7 +179,7 @@ class AppNotifications {
         '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     if (prefs.getString(_prefSummaryDate) == today) return;
 
-    final parts = summaryParts(open, today);
+    final parts = summaryParts(open, today, nowMinutes: now.hour * 60 + now.minute);
     // Mark the day even when there's nothing to say — no empty notifications.
     await prefs.setString(_prefSummaryDate, today);
     if (parts.isEmpty) return;

@@ -26,4 +26,17 @@ void main() {
     expect(AppNotifications.summaryParts(open, '2026-09-02'), ['2 due today', '1 overdue']);
     expect(AppNotifications.summaryParts([], '2026-09-02'), isEmpty);
   });
+
+  test('summaryParts moves due-today tasks with a passed time to overdue', () {
+    final open = [
+      {'name': 'a', 'status': 'To Do', 'due_date': '2026-09-02', 'due_time': '9:00:00'},
+      {'name': 'b', 'status': 'To Do', 'due_date': '2026-09-02', 'due_time': '18:30:00'},
+      {'name': 'c', 'status': 'To Do', 'due_date': '2026-09-02', 'due_time': null},
+    ];
+    // 10:00 — the 9 AM task has passed, 6:30 PM and untimed haven't.
+    expect(AppNotifications.summaryParts(open, '2026-09-02', nowMinutes: 600),
+        ['2 due today', '1 overdue']);
+    // Without a clock, the day-based rule applies.
+    expect(AppNotifications.summaryParts(open, '2026-09-02'), ['3 due today']);
+  });
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../celebration.dart';
 import '../main.dart';
 import '../models.dart';
+import '../task_time.dart';
 import '../theme.dart';
 import '../widgets/task_tile.dart';
 import 'calendar_view.dart';
@@ -485,6 +486,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
   String? _project;
   String _priority = 'Medium';
   DateTime? _due;
+  String? _dueTime; // "HH:mm"
   bool _busy = false;
 
   @override
@@ -504,6 +506,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
         'status': 'To Do',
         'priority': _priority,
         if (_due != null) 'due_date': _due!.toIso8601String().substring(0, 10),
+        if (_due != null && _dueTime != null) 'due_time': toServerTime(_dueTime),
       });
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
@@ -580,7 +583,28 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              style: TextButton.styleFrom(foregroundColor: _dueTime == null ? kMuted : kOrange),
+              icon: const Icon(Icons.schedule, size: 16),
+              label: Text(_dueTime == null ? 'Add time' : 'Due at ${formatTime(_dueTime)}'),
+              onPressed: () async {
+                final choice = await pickTaskTime(context, current: _dueTime);
+                if (choice == null) return;
+                setState(() {
+                  _dueTime = choice.time;
+                  // A time needs a date — default to today.
+                  if (choice.time != null && _due == null) {
+                    final now = DateTime.now();
+                    _due = DateTime(now.year, now.month, now.day);
+                  }
+                });
+              },
+            ),
+          ),
+          const SizedBox(height: 6),
           FilledButton(
             onPressed: _busy ? null : _save,
             child: Text(_busy ? 'Creating…' : 'Create task'),

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'task_time.dart';
+
 // Plain data models for the Hive doctypes the app uses.
 
 class Task {
@@ -18,6 +20,8 @@ class Task {
   String? get creation => raw['creation'] as String?;
   String? get milestone => raw['milestone'] as String?;
   String? get completedOn => raw['completed_on'] as String?;
+  String? get startTime => normalizeTime(raw['start_time'] as String?);
+  String? get dueTime => normalizeTime(raw['due_time'] as String?);
 
   /// Frappe stores assignments as a JSON array string in `_assign`.
   List<String> get assignees {
@@ -33,7 +37,8 @@ class Task {
   List<ChecklistItem> get checklist =>
       ((raw['checklist'] as List?) ?? const []).map((e) => ChecklistItem(Map.from(e as Map))).toList();
 
-  /// none | overdue | today | upcoming — same day-based rule as the web app.
+  /// none | overdue | today | upcoming — same rule as the web app and server:
+  /// due today with a passed due time counts as overdue; untimed stays "today".
   String get dueState {
     final due = dueDate;
     if (due == null || status == 'Done' || status == 'Someday') return 'none';
@@ -42,7 +47,11 @@ class Task {
         '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     final d = due.substring(0, 10);
     if (d.compareTo(today) < 0) return 'overdue';
-    if (d == today) return 'today';
+    if (d == today) {
+      final mins = timeToMinutes(dueTime);
+      if (mins != null && mins < now.hour * 60 + now.minute) return 'overdue';
+      return 'today';
+    }
     return 'upcoming';
   }
 }

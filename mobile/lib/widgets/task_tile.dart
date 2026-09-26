@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models.dart';
+import '../task_time.dart';
 import '../theme.dart';
 
 Color dueColor(String state) => switch (state) {
@@ -68,9 +69,9 @@ class TaskTile extends StatelessWidget {
                     Text(projectTitle, style: const TextStyle(color: kMuted, fontSize: 12)),
                   if (task.dueDate != null)
                     Text(
-                      due == 'today'
-                          ? 'Today'
-                          : '${fmtDate(task.dueDate)}${due == 'overdue' ? ' · overdue' : ''}',
+                      '${due == 'today' ? 'Today' : fmtDate(task.dueDate)}'
+                      '${task.dueTime != null ? ' · ${formatTime(task.dueTime)}' : ''}'
+                      '${due == 'overdue' ? ' · overdue' : ''}',
                       style: TextStyle(
                           color: dueColor(due),
                           fontSize: 12,

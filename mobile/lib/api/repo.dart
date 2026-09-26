@@ -4,7 +4,7 @@ import '../models.dart';
 const taskFields = [
   'name', 'title', 'project', 'status', 'priority', 'size', 'milestone',
   'due_date', 'start_date', 'owner', 'creation', 'modified', 'description',
-  'completed_on', '_assign',
+  'completed_on', '_assign', 'start_time', 'due_time',
 ];
 
 /// Typed calls over [ApiClient] for everything the app shows.

@@ -7,6 +7,7 @@ import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart
 import '../celebration.dart';
 import '../main.dart';
 import '../models.dart';
+import '../task_time.dart';
 import '../theme.dart';
 import '../widgets/task_tile.dart';
 
@@ -148,14 +149,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         Expanded(child: _priorityPicker(t)),
                       ]),
                       const SizedBox(height: 10),
-                      Row(children: [
+                      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Expanded(
-                            child: _datePicker('Start', t.startDate,
-                                (d) => _update({'start_date': d}))),
+                            child: _dateTimeField(
+                                'Start', t.startDate, t.startTime, 'start_date', 'start_time')),
                         const SizedBox(width: 10),
                         Expanded(
-                            child:
-                                _datePicker('Due', t.dueDate, (d) => _update({'due_date': d}))),
+                            child: _dateTimeField(
+                                'Due', t.dueDate, t.dueTime, 'due_date', 'due_time')),
                       ]),
                       const SizedBox(height: 20),
                       if ((t.description ?? '').trim().isNotEmpty) ...[
@@ -497,6 +498,42 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           if (v != null) _update({'priority': v});
         },
       );
+
+  /// Date button with a time button under it. Picking a time on an undated
+  /// task sets the date to today; clearing the date clears its time (server).
+  Widget _dateTimeField(
+      String label, String? date, String? time, String dateKey, String timeKey) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _datePicker(label, date, (d) => _update({dateKey: d})),
+        const SizedBox(height: 6),
+        TextButton.icon(
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+            foregroundColor: time == null ? kMuted : kOrange,
+            backgroundColor: time == null ? null : kOrange.withValues(alpha: 0.10),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          icon: const Icon(Icons.schedule, size: 15),
+          label: Text(time == null ? 'Add time' : formatTime(time),
+              style: const TextStyle(fontSize: 12.5)),
+          onPressed: () async {
+            final choice = await pickTaskTime(context, current: time);
+            if (choice == null) return;
+            final values = <String, Object?>{timeKey: toServerTime(choice.time)};
+            if (choice.time != null && date == null) {
+              final now = DateTime.now();
+              values[dateKey] =
+                  '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+            }
+            await _update(values);
+          },
+          onLongPress: time == null ? null : () => _update({timeKey: null}),
+        ),
+      ],
+    );
+  }
 
   Widget _datePicker(String label, String? value, void Function(String?) onChanged) {
     return OutlinedButton(
