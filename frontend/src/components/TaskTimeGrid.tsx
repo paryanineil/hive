@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { format, isToday } from "date-fns"
 import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -88,6 +88,17 @@ export function minutesToHHmm(mins: number): string {
   const m = Math.max(0, Math.min(DAY_MIN - 1, Math.round(mins)))
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`
 }
+
+/** Nearest ancestor that scrolls vertically (the app's content pane), if any. */
+function scrollParentOf(el: HTMLElement): HTMLElement | null {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const oy = getComputedStyle(p).overflowY
+    if (oy === "auto" || oy === "scroll") return p
+  }
+  return null
+}
+
+const MIN_GRID_PX = 420
 
 function hourLabel(h: number): string {
   const suffix = h < 12 ? "AM" : "PM"
@@ -194,7 +205,9 @@ interface TaskTimeGridProps {
  * parent calendar (it owns the DndContext).
  */
 export function TaskTimeGrid({ days, tasksForDay, colorFor, renderChip, onTaskClick, registerColumn }: TaskTimeGridProps) {
+  const outerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [fillPx, setFillPx] = useState<number | null>(null)
   const [now, setNow] = useState(() => new Date())
   const single = days.length === 1
 
@@ -227,14 +240,33 @@ export function TaskTimeGrid({ days, tasksForDay, colorFor, renderChip, onTaskCl
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [daysKey])
 
+  // Stretch the grid to the bottom of the window (as measured with the page
+  // scrolled to the top), so the hours get the screen instead of a short box.
+  // Re-measured on every render — cheap, and catches things above it changing
+  // height, like the colour legend appearing.
+  useLayoutEffect(() => {
+    const el = outerRef.current
+    if (!el) return
+    const measure = () => {
+      const pane = scrollParentOf(el)
+      const top = el.getBoundingClientRect().top + (pane ? pane.scrollTop : window.scrollY)
+      const reserve = (pane ? parseFloat(getComputedStyle(pane).paddingBottom) || 0 : 0) + 4
+      const next = Math.max(MIN_GRID_PX, Math.floor(window.innerHeight - top - reserve))
+      setFillPx((prev) => (prev !== null && Math.abs(prev - next) <= 1 ? prev : next))
+    }
+    measure()
+    window.addEventListener("resize", measure)
+    return () => window.removeEventListener("resize", measure)
+  })
+
   const cols = `56px repeat(${days.length}, minmax(${single ? 0 : 88}px, 1fr))`
   const nowTop = ((now.getHours() * 60 + now.getMinutes()) / 60) * HOUR_PX
 
   return (
-    <div className="overflow-hidden rounded-md border">
+    <div ref={outerRef} className="overflow-hidden rounded-md border">
       {/* One scroller for both axes, so the sticky header, all-day lane and hour
           grid share column widths (a separate body scrollbar would misalign them). */}
-      <div ref={scrollRef} className="max-h-[min(680px,72vh)] overflow-auto">
+      <div ref={scrollRef} className="overflow-auto" style={{ maxHeight: fillPx ?? MIN_GRID_PX }}>
         <div style={{ minWidth: single ? undefined : 56 + days.length * 88 }}>
           <div className="sticky top-0 z-30 bg-background">
             {/* Day headers */}
