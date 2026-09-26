@@ -52,6 +52,13 @@ void main() {
 
     await tester.tap(find.textContaining('Task x'));
     expect(opened, ['x']);
+
+    // Rows are sized so ~12 hours fit: opened an hour before the first task
+    // (9 AM), the 8 AM and 7 PM lines are both on screen without scrolling.
+    for (final label in ['8 AM', '7 PM']) {
+      final r = tester.getRect(find.text(label));
+      expect(r.top >= 0 && r.bottom <= 700, isTrue, reason: '$label at $r should be visible');
+    }
     await tester.binding.setSurfaceSize(null);
   });
 }

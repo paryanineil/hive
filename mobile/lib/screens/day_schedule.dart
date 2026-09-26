@@ -6,7 +6,11 @@ import '../models.dart';
 import '../task_time.dart';
 import '../theme.dart';
 
-const double _hourPx = 56;
+/// Hour rows are sized so about this many hours fit on screen, clamped so
+/// blocks stay legible on small phones and not bloated on tablets.
+const int _visibleHours = 12;
+const double _minHourPx = 30;
+const double _maxHourPx = 72;
 const double _gutter = 48;
 const int _dayMin = 24 * 60;
 
@@ -136,9 +140,11 @@ class DaySchedule extends StatefulWidget {
 }
 
 class _DayScheduleState extends State<DaySchedule> {
-  late final ScrollController _scroll;
+  final _scroll = ScrollController();
   Timer? _tick;
   DateTime _now = DateTime.now();
+  late final int _targetMin;
+  bool _didInitialScroll = false;
 
   @override
   void initState() {
@@ -154,9 +160,7 @@ class _DayScheduleState extends State<DaySchedule> {
       final first = starts.reduce((a, b) => a < b ? a : b);
       target = widget.isToday && nowMin < first ? nowMin : first;
     }
-    _scroll = ScrollController(
-      initialScrollOffset: ((target - 60).clamp(0, _dayMin) / 60) * _hourPx,
-    );
+    _targetMin = target;
     _tick = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
@@ -167,6 +171,18 @@ class _DayScheduleState extends State<DaySchedule> {
     _tick?.cancel();
     _scroll.dispose();
     super.dispose();
+  }
+
+  /// The row height is only known at layout, so the first scroll (to an hour
+  /// before the first task / now / 8 AM) happens after the first frame.
+  void _scheduleInitialScroll(double hourPx) {
+    if (_didInitialScroll) return;
+    _didInitialScroll = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      final offset = (_targetMin - 60).clamp(0, _dayMin) / 60 * hourPx;
+      _scroll.jumpTo(offset.clamp(0.0, _scroll.position.maxScrollExtent));
+    });
   }
 
   Color _colorFor(Task t) => t.dueState == 'overdue'
@@ -212,19 +228,24 @@ class _DayScheduleState extends State<DaySchedule> {
             ),
           ),
         Expanded(
-          child: SingleChildScrollView(
-            controller: _scroll,
-            child: SizedBox(
-              height: 24 * _hourPx + 8,
-              child: LayoutBuilder(
-                builder: (context, box) {
-                  final colsWidth = box.maxWidth - _gutter - 8;
-                  return Stack(
+          child: LayoutBuilder(
+            builder: (context, box) {
+              final hp = (box.maxHeight / _visibleHours).clamp(
+                _minHourPx,
+                _maxHourPx,
+              );
+              _scheduleInitialScroll(hp);
+              final colsWidth = box.maxWidth - _gutter - 8;
+              return SingleChildScrollView(
+                controller: _scroll,
+                child: SizedBox(
+                  height: 24 * hp + 8,
+                  child: Stack(
                     children: [
                       // Hour + half-hour gridlines and labels.
                       for (var h = 0; h < 24; h++) ...[
                         Positioned(
-                          top: h * _hourPx,
+                          top: h * hp,
                           left: _gutter,
                           right: 0,
                           child: Container(
@@ -233,7 +254,7 @@ class _DayScheduleState extends State<DaySchedule> {
                           ),
                         ),
                         Positioned(
-                          top: h * _hourPx + _hourPx / 2,
+                          top: h * hp + hp / 2,
                           left: _gutter,
                           right: 0,
                           child: Container(
@@ -243,7 +264,7 @@ class _DayScheduleState extends State<DaySchedule> {
                         ),
                         if (h > 0)
                           Positioned(
-                            top: h * _hourPx - 7,
+                            top: h * hp - 7,
                             left: 0,
                             width: _gutter - 6,
                             child: Text(
@@ -258,8 +279,8 @@ class _DayScheduleState extends State<DaySchedule> {
                       ],
                       for (final b in laid.timed)
                         Positioned(
-                          top: b.start / 60 * _hourPx + 1,
-                          height: ((b.end - b.start) / 60 * _hourPx - 2).clamp(
+                          top: b.start / 60 * hp + 1,
+                          height: ((b.end - b.start) / 60 * hp - 2).clamp(
                             24.0,
                             double.infinity,
                           ),
@@ -267,13 +288,12 @@ class _DayScheduleState extends State<DaySchedule> {
                           width: colsWidth / b.cols - 4,
                           child: _block(
                             b,
-                            compact: (b.end - b.start) / 60 * _hourPx < 40,
+                            compact: (b.end - b.start) / 60 * hp < 40,
                           ),
                         ),
                       if (widget.isToday)
                         Positioned(
-                          top:
-                              (_now.hour * 60 + _now.minute) / 60 * _hourPx - 1,
+                          top: (_now.hour * 60 + _now.minute) / 60 * hp - 1,
                           left: _gutter - 4,
                           right: 0,
                           child: Row(
@@ -293,10 +313,10 @@ class _DayScheduleState extends State<DaySchedule> {
                           ),
                         ),
                     ],
-                  );
-                },
-              ),
-            ),
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ],
