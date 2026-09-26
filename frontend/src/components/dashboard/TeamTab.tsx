@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/chart"
 import { MemberAvatar } from "@/components/MemberAvatar"
 import { TASK_PRIORITY_COLOR } from "@/lib/variants"
+import { formatTime } from "@/lib/taskTime"
 
 interface TaskItem {
   name: string
@@ -35,6 +36,7 @@ interface TaskItem {
   project_slug?: string
   priority: string
   due_date?: string | null
+  due_time?: string | null
   completed_on?: string | null
   status?: string
 }
@@ -288,6 +290,7 @@ function MemberStatsCard({ member }: { member: MemberDetail }) {
                   {task.due_date && (
                     <span className="text-[10px] text-destructive/70 shrink-0">
                       {task.due_date}
+                      {task.due_time && ` ${formatTime(task.due_time)}`}
                     </span>
                   )}
                 </Link>

@@ -39,6 +39,7 @@ import { MemberAvatar } from "@/components/MemberAvatar"
 import { TASK_PRIORITY_VARIANT, TASK_SIZE_VARIANT, TASK_STATUS_COLOR, PRIORITY_ORDER } from "@/lib/variants"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { getDueState, DUE_TEXT_CLASS } from "@/lib/dueDate"
+import { dateTimeSortKey, formatTime } from "@/lib/taskTime"
 import { cn } from "@/lib/utils"
 import { TASK_STATUSES } from "@/types"
 import type { HiveTask, HiveTaskAssignee } from "@/types"
@@ -168,7 +169,7 @@ const columns: ColumnDef<TaskRow>[] = [
   },
   {
     id: "start_date",
-    accessorFn: (row) => row.task.start_date || "9999-12-31",
+    accessorFn: (row) => dateTimeSortKey(row.task.start_date, row.task.start_time),
     header: ({ column }) => <SortHeader label="Start Date" column={column} />,
     cell: ({ row }) => {
       const { task } = row.original
@@ -176,24 +177,26 @@ const columns: ColumnDef<TaskRow>[] = [
       return (
         <span className="text-muted-foreground">
           {format(new Date(task.start_date), "MMM d, yyyy")}
+          {task.start_time && <span className="whitespace-nowrap"> · {formatTime(task.start_time)}</span>}
         </span>
       )
     },
   },
   {
     id: "due_date",
-    accessorFn: (row) => row.task.due_date || "9999-12-31",
+    accessorFn: (row) => dateTimeSortKey(row.task.due_date, row.task.due_time),
     header: ({ column }) => <SortHeader label="Due Date" column={column} />,
     cell: ({ row }) => {
       const { task } = row.original
       if (!task.due_date) return <span className="text-muted-foreground">-</span>
-      const state = getDueState(task.due_date, task.status)
+      const state = getDueState(task.due_date, task.status, task.due_time)
       return (
         <span className={cn("inline-flex items-center gap-1 whitespace-nowrap", DUE_TEXT_CLASS[state])}>
           {state === "overdue" && (
             <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="size-3.5 shrink-0" />
           )}
           {format(new Date(task.due_date), "MMM d, yyyy")}
+          {task.due_time && <span>· {formatTime(task.due_time)}</span>}
           {state === "today" && <span className="text-[10px] font-medium">· Today</span>}
         </span>
       )
@@ -361,7 +364,7 @@ export function TaskListTable({ data, onRowClick, countNote = "", hideProjectCol
    */
   const renderCard = (row: Row<TaskRow>) => {
     const { task, projectTitle, assignees } = row.original
-    const dueState = getDueState(task.due_date, task.status)
+    const dueState = getDueState(task.due_date, task.status, task.due_time)
     return (
       <li
         key={row.id}
@@ -402,6 +405,7 @@ export function TaskListTable({ data, onRowClick, countNote = "", hideProjectCol
           <div className="flex items-center justify-between gap-2 pl-4">
             <span className={cn("text-xs", DUE_TEXT_CLASS[dueState])}>
               {task.due_date ? format(new Date(task.due_date), "MMM d, yyyy") : "No due date"}
+              {task.due_date && task.due_time && ` · ${formatTime(task.due_time)}`}
               {dueState === "today" && " · Today"}
               {dueState === "overdue" && " · Overdue"}
               {task.creation && (

@@ -21,6 +21,7 @@ import { MemberAvatar } from "@/components/MemberAvatar"
 import { TASK_STATUSES, type HiveTask, type HiveTaskAssignee } from "@/types"
 import { TASK_PRIORITY_VARIANT, TASK_SIZE_VARIANT } from "@/lib/variants"
 import { getDueState, DUE_TEXT_CLASS } from "@/lib/dueDate"
+import { formatTime } from "@/lib/taskTime"
 
 // Lifted state: eliminates hasClient / taskMap / onTaskClick prop drilling
 // through KanbanColumn → DraggableTaskCard → TaskCard (4 levels)
@@ -240,7 +241,7 @@ function DraggableTaskCard({
 
 const TaskCard = memo(function TaskCard({ task, isDragOverlay, assignees }: { task: HiveTask; isDragOverlay?: boolean; assignees?: HiveTaskAssignee[] }) {
   const { hasClient, taskMap, pinnedTaskNames, onTogglePin } = use(KanbanContext)
-  const dueState = getDueState(task.due_date, task.status)
+  const dueState = getDueState(task.due_date, task.status, task.due_time)
   const isPinned = pinnedTaskNames?.includes(task.name) ?? false
 
   // Use new assignees if available, fall back to legacy assigned_to
@@ -337,6 +338,7 @@ const TaskCard = memo(function TaskCard({ task, isDragOverlay, assignees }: { ta
                   className="size-3"
                 />
                 {format(new Date(task.due_date), "MMM d")}
+                {task.due_time && ` · ${formatTime(task.due_time)}`}
                 {dueState === "today" && " · Today"}
               </span>
             )}

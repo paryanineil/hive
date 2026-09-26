@@ -61,6 +61,7 @@ import { DatePickerField } from "@/components/DatePickerField"
 import { toast } from "sonner"
 import { getFrappeErrorMessage } from "@/lib/frappeError"
 import { enqueueTaskWrite } from "@/lib/taskWriteQueue"
+import { formatTime, normalizeTime, toServerTime } from "@/lib/taskTime"
 import { LazyTiptapEditor } from "@/components/LazyTiptapEditor"
 import { useUser } from "@/context/UserContext"
 import { TaskCommentsSection } from "@/components/TaskCommentsSection"
@@ -111,6 +112,11 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
   const [prLink, setPrLink] = useState("")
   const [dueDate, setDueDate] = useState<Date | undefined>()
   const [startDate, setStartDate] = useState<Date | undefined>()
+  const [dueTime, setDueTime] = useState<string | undefined>()
+  const [startTime, setStartTime] = useState<string | undefined>()
+  // Only send times once we actually know them: some openers pass list rows
+  // fetched without the time fields, and saving from those would wipe them.
+  const timesKnownRef = useRef(false)
   const [completedOn, setCompletedOn] = useState<Date | undefined>()
   const [recurrenceFrequency, setRecurrenceFrequency] = useState("")
   const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | undefined>()
@@ -217,11 +223,24 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
       setPrLink(task.pr_link || "")
       setDueDate(task.due_date ? new Date(task.due_date) : undefined)
       setStartDate(task.start_date ? new Date(task.start_date) : undefined)
+      timesKnownRef.current = "due_time" in task || "start_time" in task
+      setDueTime(normalizeTime(task.due_time))
+      setStartTime(normalizeTime(task.start_time))
       setCompletedOn(task.completed_on ? new Date(task.completed_on) : undefined)
       setRecurrenceFrequency(task.recurrence_frequency || "")
       setRecurrenceEndDate(task.recurrence_end_date ? new Date(task.recurrence_end_date) : undefined)
     }
   }, [task?.name])
+
+  // The full doc always carries the times (a missing key means null), so adopt
+  // them once it loads — unless the user has already picked a time here.
+  useEffect(() => {
+    if (!taskDoc || taskDoc.name !== task?.name) return
+    if (timesKnownRef.current && userEditedRef.current) return
+    setDueTime(normalizeTime(taskDoc.due_time))
+    setStartTime(normalizeTime(taskDoc.start_time))
+    timesKnownRef.current = true
+  }, [taskDoc?.name, taskDoc?.modified])
 
   // Sync assignees from initialAssignees prop (REST API strips _assign field)
   useEffect(() => {
@@ -273,7 +292,7 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
         autosaveTimerRef.current = undefined
       }
     }
-  }, [title, description, status, priority, size, project, milestone, dependsOn, prLink, dueDate, startDate, completedOn, recurrenceFrequency, recurrenceEndDate, open, isClient])
+  }, [title, description, status, priority, size, project, milestone, dependsOn, prLink, dueDate, startDate, dueTime, startTime, completedOn, recurrenceFrequency, recurrenceEndDate, open, isClient])
 
   const assignedMemberNames = useMemo(() => new Set(assignees.map((a) => a.member)), [assignees])
 
@@ -348,6 +367,12 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
           pr_link: prLink || null,
           due_date: dueDate ? format(dueDate, "yyyy-MM-dd") : null,
           start_date: startDate ? format(startDate, "yyyy-MM-dd") : null,
+          ...(timesKnownRef.current
+            ? {
+                due_time: dueDate ? toServerTime(dueTime) : null,
+                start_time: startDate ? toServerTime(startTime) : null,
+              }
+            : {}),
           completed_on: completedOn ? format(completedOn, "yyyy-MM-dd") : null,
           recurrence_frequency: recurrenceFrequency || null,
           recurrence_end_date: recurrenceFrequency && recurrenceEndDate ? format(recurrenceEndDate, "yyyy-MM-dd") : null,
@@ -687,20 +712,30 @@ export function TaskDetailSheet({ task, open, onOpenChange, onUpdated, hasClient
             <Label>Start Date</Label>
             {isClient ? (
               <p className="text-sm text-muted-foreground py-1">
-                {startDate ? format(startDate, "MMM d, yyyy") : "Not set"}
+                {startDate ? `${format(startDate, "MMM d, yyyy")}${startTime ? ` · ${formatTime(startTime)}` : ""}` : "Not set"}
               </p>
             ) : (
-              <DatePickerField date={startDate} onSelect={(d) => { setStartDate(d); markEdited() }} />
+              <DatePickerField
+                date={startDate}
+                onSelect={(d) => { setStartDate(d); markEdited() }}
+                time={startTime}
+                onTimeChange={(t) => { timesKnownRef.current = true; setStartTime(t); markEdited() }}
+              />
             )}
           </div>
           <div className="grid gap-2">
             <Label>Due Date</Label>
             {isClient || isDueDateLocked ? (
               <p className="text-sm text-muted-foreground py-1" title={isDueDateLocked ? "Due date is locked on or after the due date" : undefined}>
-                {dueDate ? format(dueDate, "MMM d, yyyy") : "Not set"}
+                {dueDate ? `${format(dueDate, "MMM d, yyyy")}${dueTime ? ` · ${formatTime(dueTime)}` : ""}` : "Not set"}
               </p>
             ) : (
-              <DatePickerField date={dueDate} onSelect={(d) => { setDueDate(d); markEdited() }} />
+              <DatePickerField
+                date={dueDate}
+                onSelect={(d) => { setDueDate(d); markEdited() }}
+                time={dueTime}
+                onTimeChange={(t) => { timesKnownRef.current = true; setDueTime(t); markEdited() }}
+              />
             )}
           </div>
           {status === "Done" && (

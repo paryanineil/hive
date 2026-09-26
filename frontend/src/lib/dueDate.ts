@@ -1,10 +1,13 @@
+import { timeToMinutes } from "@/lib/taskTime"
+
 /**
  * Shared due-date state for tasks.
  *
  * Compares calendar days, not timestamps. `new Date("2026-07-26") < new Date()`
  * is true from midnight onwards, which wrongly marked tasks due *today* as
- * overdue — and disagreed with the backend, which defines overdue as
- * `due_date < today` (see api.py).
+ * overdue. With a due time, a task due today turns overdue once that time has
+ * passed; without one it stays "today" all day. Mirrors the backend's
+ * definition in due.py.
  */
 export type DueState = "none" | "overdue" | "today" | "upcoming"
 
@@ -15,14 +18,19 @@ function localDayKey(d: Date): string {
   return `${d.getFullYear()}-${m}-${day}`
 }
 
-export function getDueState(dueDate?: string | null, status?: string): DueState {
+export function getDueState(dueDate?: string | null, status?: string, dueTime?: string | null): DueState {
   if (!dueDate) return "none"
   // Completed / someday tasks are never chased.
   if (status === "Done" || status === "Someday") return "none"
   const due = dueDate.slice(0, 10)
-  const today = localDayKey(new Date())
+  const now = new Date()
+  const today = localDayKey(now)
   if (due < today) return "overdue"
-  if (due === today) return "today"
+  if (due === today) {
+    const mins = timeToMinutes(dueTime)
+    if (mins !== undefined && mins < now.getHours() * 60 + now.getMinutes()) return "overdue"
+    return "today"
+  }
   return "upcoming"
 }
 

@@ -113,7 +113,9 @@ const TASK_FIELDS = [
   "is_internal",
   "description",
   "due_date",
+  "due_time",
   "start_date",
+  "start_time",
   "pr_link",
   "completed_on",
   "uat_status",
@@ -368,7 +370,9 @@ export function ProjectDetailPage() {
     priority: string
     status: string
     due_date?: string | null
+    due_time?: string | null
     start_date?: string | null
+    start_time?: string | null
     pr_link?: string | null
     is_internal?: 0 | 1
     _assign_users?: string[]

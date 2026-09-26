@@ -31,6 +31,7 @@ import {
   type AnimationVariant,
 } from "@/hooks/useCelebrationSettings"
 import { useCelebration } from "@/hooks/useTaskCelebration"
+import { useTimePresets, TIME_PRESET_LABELS, type TimePresetKey } from "@/hooks/useTimePresets"
 
 interface HiveProjectType {
   name: string
@@ -44,6 +45,7 @@ interface HiveSettings {
 export function GeneralSection() {
   const { animation, sound, soundVariant, animationVariant } = useCelebrationSettings()
   const { celebrate } = useCelebration()
+  const [timePresets, setTimePreset, resetTimePresets] = useTimePresets()
 
   const { data: hiveSettings, mutate: mutateSettings } = useFrappeGetDoc<HiveSettings>(
     "Hive Settings",
@@ -328,6 +330,36 @@ export function GeneralSection() {
               }
             }}
           />
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium">Time shortcuts</span>
+              <span className="text-xs text-muted-foreground">
+                The quick times offered when picking a start or due date. Saved for you on this device.
+              </span>
+            </div>
+            <Button variant="ghost" size="sm" className="shrink-0 text-xs text-muted-foreground" onClick={resetTimePresets}>
+              Reset
+            </Button>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {(Object.keys(TIME_PRESET_LABELS) as TimePresetKey[]).map((key) => (
+              <div key={key} className="grid gap-1.5">
+                <Label htmlFor={`time-preset-${key}`} className="text-xs text-muted-foreground">
+                  {TIME_PRESET_LABELS[key]}
+                </Label>
+                <Input
+                  id={`time-preset-${key}`}
+                  type="time"
+                  value={timePresets[key]}
+                  onChange={(e) => setTimePreset(key, e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

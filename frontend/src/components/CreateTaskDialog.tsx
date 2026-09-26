@@ -29,6 +29,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command"
 import { DatePickerField as SharedDatePicker } from "@/components/DatePickerField"
+import { toServerTime } from "@/lib/taskTime"
 import { LinkField } from "@/components/LinkField"
 import { TASK_PRIORITIES, TASK_RECURRENCE_FREQUENCIES, TASK_STATUSES, type HiveMember } from "@/types"
 import { useUser } from "@/context/UserContext"
@@ -46,7 +47,9 @@ interface CreateTaskValues {
   priority: string
   status: string
   due_date?: string | null
+  due_time?: string | null
   start_date?: string | null
+  start_time?: string | null
   is_internal?: 0 | 1
   milestone?: string | null
   _assign_users?: string[]
@@ -72,6 +75,8 @@ interface TaskDraft {
   status: string
   dueDate: string | null
   startDate: string | null
+  dueTime?: string | null
+  startTime?: string | null
   isInternal: boolean
   assignees: AssigneeRow[]
   selectedMilestone: string
@@ -100,6 +105,8 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, projectId }: Cr
   const [status, setStatus] = useState(initialDraft.status ?? "To Do")
   const [dueDate, setDueDate] = useState<Date | undefined>(initialDraft.dueDate ? new Date(initialDraft.dueDate) : undefined)
   const [startDate, setStartDate] = useState<Date | undefined>(initialDraft.startDate ? new Date(initialDraft.startDate) : undefined)
+  const [dueTime, setDueTime] = useState<string | undefined>(initialDraft.dueTime ?? undefined)
+  const [startTime, setStartTime] = useState<string | undefined>(initialDraft.startTime ?? undefined)
   const [isInternal, setIsInternal] = useState(initialDraft.isInternal ?? false)
   const [assignees, setAssignees] = useState<AssigneeRow[]>(initialDraft.assignees ?? [])
   const [selectedMilestone, setSelectedMilestone] = useState(initialDraft.selectedMilestone ?? "")
@@ -122,6 +129,8 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, projectId }: Cr
         title, description, priority, status,
         dueDate: dueDate?.toISOString() ?? null,
         startDate: startDate?.toISOString() ?? null,
+        dueTime: dueTime ?? null,
+        startTime: startTime ?? null,
         isInternal, assignees, selectedMilestone, selectedProject,
         recurrenceFrequency,
         recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
@@ -130,7 +139,7 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, projectId }: Cr
     } else {
       localStorage.removeItem(DRAFT_KEY)
     }
-  }, [title, description, priority, status, dueDate, startDate, isInternal, assignees, selectedMilestone, selectedProject, recurrenceFrequency, recurrenceEndDate])
+  }, [title, description, priority, status, dueDate, startDate, dueTime, startTime, isInternal, assignees, selectedMilestone, selectedProject, recurrenceFrequency, recurrenceEndDate])
 
   const { user } = useUser()
   const needsProjectPicker = !projectId
@@ -189,7 +198,9 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, projectId }: Cr
       priority,
       status,
       due_date: dueDate ? format(dueDate, "yyyy-MM-dd") : null,
+      due_time: dueDate ? toServerTime(dueTime) : null,
       start_date: startDate ? format(startDate, "yyyy-MM-dd") : null,
+      start_time: startDate ? toServerTime(startTime) : null,
       is_internal: isInternal ? 1 : 0,
       milestone: selectedMilestone || null,
       _assign_users: assignees.map((a) => a.member),
@@ -206,6 +217,8 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, projectId }: Cr
     setStatus("To Do")
     setDueDate(undefined)
     setStartDate(undefined)
+    setDueTime(undefined)
+    setStartTime(undefined)
     setIsInternal(false)
     setAssignees([])
     setSelectedMilestone("")
@@ -355,8 +368,8 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, projectId }: Cr
 
   const dateFields = (
     <div className="grid grid-cols-2 gap-4">
-      <DatePickerField date={startDate} onSelect={setStartDate} label="Start Date" />
-      <DatePickerField date={dueDate} onSelect={setDueDate} label="Due Date" />
+      <DatePickerField date={startDate} onSelect={setStartDate} label="Start Date" time={startTime} onTimeChange={setStartTime} />
+      <DatePickerField date={dueDate} onSelect={setDueDate} label="Due Date" time={dueTime} onTimeChange={setDueTime} />
     </div>
   )
 
@@ -506,16 +519,20 @@ function DatePickerField({
   date,
   onSelect,
   label,
+  time,
+  onTimeChange,
 }: {
   date: Date | undefined
   onSelect: (date: Date | undefined) => void
   label: string
+  time?: string
+  onTimeChange?: (time: string | undefined) => void
 }) {
   // Thin label wrapper around the shared picker (quick presets + typed dates).
   return (
     <div className="grid gap-2">
       <Label>{label}</Label>
-      <SharedDatePicker date={date} onSelect={onSelect} placeholder="Pick date" />
+      <SharedDatePicker date={date} onSelect={onSelect} placeholder="Pick date" time={time} onTimeChange={onTimeChange} />
     </div>
   )
 }

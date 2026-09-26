@@ -125,6 +125,7 @@ export function AppLayout() {
   const handleCreateTask = useCallback(async (values: {
     title: string; priority: string; status: string;
     due_date?: string | null; start_date?: string | null;
+    due_time?: string | null; start_time?: string | null;
     is_internal?: 0 | 1; assignees?: { member: string }[];
     project?: string;
     recurrence_frequency?: string | null;

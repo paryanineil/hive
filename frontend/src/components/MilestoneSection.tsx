@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react"
 import { useFrappeGetDocList, useFrappeCreateDoc, useFrappeUpdateDoc } from "frappe-react-sdk"
 import { format } from "date-fns"
+import { getDueState } from "@/lib/dueDate"
+import { dateTimeSortKey, formatTime } from "@/lib/taskTime"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Add01Icon, Calendar03Icon, PencilEdit01Icon, Target02Icon, ArrowDown01Icon } from "@hugeicons/core-free-icons"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -55,7 +57,7 @@ function getWeight(size: string | null | undefined): number {
 
 function sortTasksByDueDate(tasks: HiveTask[]): HiveTask[] {
   return [...tasks].sort((a, b) => {
-    if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date)
+    if (a.due_date && b.due_date) return dateTimeSortKey(a.due_date, a.due_time).localeCompare(dateTimeSortKey(b.due_date, b.due_time))
     if (a.due_date && !b.due_date) return -1
     if (!a.due_date && b.due_date) return 1
     return 0
@@ -280,11 +282,12 @@ export function MilestoneSection({ projectId, tasks, onTaskClick }: MilestoneSec
                               <span className="text-sm truncate flex-1">{task.title}</span>
                               {task.due_date && (
                                 <span className={`text-[11px] shrink-0 ${
-                                  new Date(task.due_date) < new Date() && task.status !== "Done"
+                                  getDueState(task.due_date, task.status, task.due_time) === "overdue"
                                     ? "text-destructive"
                                     : "text-muted-foreground"
                                 }`}>
                                   {format(new Date(task.due_date), "MMM d")}
+                                  {task.due_time && ` · ${formatTime(task.due_time)}`}
                                 </span>
                               )}
                             </button>

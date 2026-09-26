@@ -157,7 +157,7 @@ export function TasksPage() {
     {
       fields: [
         "name", "title", "project", "status", "priority", "size", "milestone",
-        "depends_on", "assigned_to", "is_internal", "description", "start_date", "due_date", "pr_link", "owner",
+        "depends_on", "assigned_to", "is_internal", "description", "start_date", "start_time", "due_date", "due_time", "pr_link", "owner",
         "completed_on", "uat_status", "recurrence_frequency", "recurrence_end_date", "creation", "modified",
       ],
       filters: [["is_archived", "=", 0]],
@@ -206,6 +206,7 @@ export function TasksPage() {
   const handleCreateTask = useCallback(async (values: {
     title: string; priority: string; status: string;
     due_date?: string | null; start_date?: string | null;
+    due_time?: string | null; start_time?: string | null;
     is_internal?: 0 | 1; _assign_users?: string[];
     project?: string; milestone?: string | null;
     recurrence_frequency?: string | null;
@@ -321,7 +322,7 @@ export function TasksPage() {
       if (!showCompleted && task.status === "Done" && !statusV.includes("Done")) return false
       // Smart-list due filters (?due=today|overdue|planned).
       if (dueParam) {
-        const state = getDueState(task.due_date, task.status)
+        const state = getDueState(task.due_date, task.status, task.due_time)
         if (dueParam === "today" && state !== "today") return false
         if (dueParam === "overdue" && state !== "overdue") return false
         if (dueParam === "planned" && !task.due_date) return false

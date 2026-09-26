@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils"
 import { TASK_STATUS_COLOR } from "@/lib/variants"
 import { getDueState } from "@/lib/dueDate"
+import { formatTime } from "@/lib/taskTime"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Alert02Icon } from "@hugeicons/core-free-icons"
 import type { HiveTask } from "@/types"
@@ -140,18 +141,18 @@ export function TaskTimeline({ tasks, projectTitles, onTaskClick }: TaskTimeline
                         <button
                           type="button"
                           onClick={() => onTaskClick(task)}
-                          title={`${task.title} · ${format(start, "MMM d")} – ${format(end, "MMM d")}${
-                            getDueState(task.due_date, task.status) === "overdue" ? " · overdue" : ""
+                          title={`${task.title} · ${format(start, "MMM d")}${task.start_time ? ` ${formatTime(task.start_time)}` : ""} – ${format(end, "MMM d")}${task.due_time ? ` ${formatTime(task.due_time)}` : ""}${
+                            getDueState(task.due_date, task.status, task.due_time) === "overdue" ? " · overdue" : ""
                           }${task.creation ? ` · created ${format(new Date(task.creation), "MMM d, yyyy")} by ${task.owner}` : ""}`}
                           className={cn(
                             "absolute top-1/2 flex h-5 -translate-y-1/2 items-center gap-1 overflow-hidden rounded px-1.5 text-[11px] font-medium text-white shadow-sm transition-opacity hover:opacity-90",
-                            getDueState(task.due_date, task.status) === "overdue"
+                            getDueState(task.due_date, task.status, task.due_time) === "overdue"
                               ? "bg-red-700 ring-1 ring-red-400"
                               : TASK_STATUS_COLOR[task.status] ?? "bg-muted-foreground",
                           )}
                           style={{ left: left + 2, width: Math.max(width - 4, COL_W - 4) }}
                         >
-                          {getDueState(task.due_date, task.status) === "overdue" && (
+                          {getDueState(task.due_date, task.status, task.due_time) === "overdue" && (
                             <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="size-3 shrink-0" />
                           )}
                           <span className="truncate">{task.title}</span>

@@ -45,6 +45,22 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { useCalendarOrder } from "@/hooks/useCalendarOrder"
 import { useGroupColors, COLOR_CHOICES } from "@/hooks/useGroupColors"
 import { getDueState } from "@/lib/dueDate"
+import { formatTime, timeToMinutes } from "@/lib/taskTime"
+
+/** The task's time on a given day: start time on its start day, else due time on its due day. */
+function timeOnDay(task: HiveTask, dayKey: string): string | undefined {
+  if (task.start_time && task.start_date?.slice(0, 10) === dayKey) return task.start_time
+  if (task.due_time && task.due_date?.slice(0, 10) === dayKey) return task.due_time
+  return undefined
+}
+
+/** "10 AM – 6 PM" style range for tooltips; empty when the task has no times. */
+function timeRangeLabel(task: HiveTask): string {
+  const s = formatTime(task.start_time)
+  const d = formatTime(task.due_time)
+  if (s && d) return `${s} – ${d}`
+  return s || d
+}
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { HiveTask, HiveTaskAssignee } from "@/types"
 
@@ -93,17 +109,17 @@ const PRIORITY_COLOR: Record<string, string> = {
 
 /** A draggable task chip. Also a drop target, so chips can be reordered onto each other. */
 function DraggableChip({
-  id, task, color, onClick,
-}: { id: string; task: HiveTask; color: string; onClick: () => void }) {
+  id, task, color, onClick, time,
+}: { id: string; task: HiveTask; color: string; onClick: () => void; time?: string }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id })
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id })
-  const dueState = getDueState(task.due_date, task.status)
+  const dueState = getDueState(task.due_date, task.status, task.due_time)
   return (
     <button
       ref={(node) => { setNodeRef(node); setDropRef(node) }}
       type="button"
       onClick={onClick}
-      title={`${task.title}${dueState === "overdue" ? " — overdue" : ""}${
+      title={`${task.title}${timeRangeLabel(task) ? ` · ${timeRangeLabel(task)}` : ""}${dueState === "overdue" ? " — overdue" : ""}${
         task.creation ? ` · created ${format(new Date(task.creation), "MMM d, yyyy")} by ${task.owner}` : ""
       }`}
       className={cn(
@@ -120,6 +136,11 @@ function DraggableChip({
         <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="size-3 shrink-0 text-red-700 dark:text-red-400" />
       ) : (
         <span className={cn("size-1.5 shrink-0 rounded-full", color)} />
+      )}
+      {time && (
+        <span className={cn("shrink-0 tabular-nums text-muted-foreground", dueState === "overdue" && "text-red-700/80 dark:text-red-400/80")}>
+          {formatTime(time)}
+        </span>
       )}
       <span className={cn("truncate", dueState === "overdue" && "text-red-700 dark:text-red-400 font-medium")}>
         {task.title}
@@ -248,6 +269,8 @@ export function TaskCalendar({
     const key = format(day, "yyyy-MM-dd")
     const list = spans.filter((s) => key >= s.from && key <= s.to).map((s) => s.task)
     if (list.length < 2) return list
+    // Timed tasks first in time order, untimed after; stable otherwise.
+    list.sort((a, b) => (timeToMinutes(timeOnDay(a, key)) ?? 24 * 60) - (timeToMinutes(timeOnDay(b, key)) ?? 24 * 60))
     // Apply the user's manual within-day order on top of the date sort.
     const byName = new Map(list.map((t) => [t.name, t]))
     return applyOrder(key, list.map((t) => t.name)).map((n) => byName.get(n)!).filter(Boolean)
@@ -334,7 +357,7 @@ export function TaskCalendar({
     const from = format(days[0], "yyyy-MM-dd")
     const to = format(days[days.length - 1], "yyyy-MM-dd")
     return spans
-      .filter((s) => getDueState(s.task.due_date, s.task.status) === "overdue")
+      .filter((s) => getDueState(s.task.due_date, s.task.status, s.task.due_time) === "overdue")
       // Drop anything already rendered in a visible day cell.
       .filter((s) => s.to < from || s.from > to)
       .map((s) => s.task)
@@ -354,6 +377,7 @@ export function TaskCalendar({
       task={task}
       color={colorFor(task)}
       onClick={() => onTaskClick(task)}
+      time={timeOnDay(task, dayKey)}
     />
   )
 
@@ -634,7 +658,7 @@ export function TaskCalendar({
                 key={task.name}
                 type="button"
                 onClick={() => onTaskClick(task)}
-                title={`${task.title} — due ${task.due_date}`}
+                title={`${task.title} — due ${task.due_date}${task.due_time ? ` ${formatTime(task.due_time)}` : ""}`}
                 className="flex max-w-[240px] items-center gap-1.5 rounded bg-card px-2 py-1 text-xs shadow-sm ring-1 ring-red-700/40 transition-colors hover:bg-accent dark:ring-red-500/40"
               >
                 <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="size-3 shrink-0 text-red-700 dark:text-red-400" />
@@ -642,6 +666,7 @@ export function TaskCalendar({
                 {task.due_date && (
                   <span className="shrink-0 text-[10px] text-muted-foreground">
                     {format(new Date(`${task.due_date.slice(0, 10)}T00:00:00`), "MMM d")}
+                    {task.due_time && ` · ${formatTime(task.due_time)}`}
                   </span>
                 )}
               </button>

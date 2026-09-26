@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { TASK_PRIORITY_VARIANT, TASK_STATUS_COLOR } from "@/lib/variants"
+import { normalizeTime } from "@/lib/taskTime"
 
 interface OverdueTask {
   name: string
@@ -25,6 +26,7 @@ interface OverdueTask {
   status: string
   priority: string
   due_date: string
+  due_time?: string | null
 }
 
 const STORAGE_KEY = "hive-overdue-dialog-last-shown"
@@ -119,7 +121,10 @@ export function OverdueTasksDialog() {
                   </Badge>
                   {task.due_date && (
                     <span className="text-xs text-red-500 whitespace-nowrap">
-                      {formatDistanceToNow(new Date(task.due_date + "T00:00:00"), { addSuffix: true })}
+                      {formatDistanceToNow(
+                        new Date(`${task.due_date}T${task.due_time ? `${normalizeTime(task.due_time)}:00` : "00:00:00"}`),
+                        { addSuffix: true },
+                      )}
                     </span>
                   )}
                 </div>

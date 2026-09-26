@@ -59,7 +59,9 @@ export interface HiveTask {
   description: string
   checklist?: HiveTaskChecklistItem[]
   due_date: string | null
+  due_time?: string | null
   start_date: string | null
+  start_time?: string | null
   completed_on: string | null
   pr_link: string | null
   github_issue_url: string | null
