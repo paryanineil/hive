@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import {
   addDays,
   addMonths,
@@ -19,7 +19,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft01Icon, ArrowRight01Icon, Alert02Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import {
   Select,
   SelectContent,
@@ -39,13 +38,14 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core"
 import { cn } from "@/lib/utils"
-import { TASK_STATUS_COLOR, TASK_PRIORITY_VARIANT } from "@/lib/variants"
+import { TASK_STATUS_COLOR } from "@/lib/variants"
 import { useWeekStart } from "@/hooks/useWeekStart"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import { useCalendarOrder } from "@/hooks/useCalendarOrder"
 import { useGroupColors, COLOR_CHOICES } from "@/hooks/useGroupColors"
 import { getDueState } from "@/lib/dueDate"
-import { formatTime, timeToMinutes } from "@/lib/taskTime"
+import { formatTime, timeToMinutes, toServerTime } from "@/lib/taskTime"
+import { TaskTimeGrid, HOUR_PX, SNAP_MIN, minutesToHHmm, timedSlot } from "@/components/TaskTimeGrid"
 
 /** The task's time on a given day: start time on its start day, else due time on its due day. */
 function timeOnDay(task: HiveTask, dayKey: string): string | undefined {
@@ -66,6 +66,8 @@ import type { HiveTask, HiveTaskAssignee } from "@/types"
 
 type CalendarMode = "month" | "week" | "day"
 
+export type TimeUpdates = { start_time?: string | null; due_time?: string | null }
+
 interface TaskCalendarProps {
   tasks: HiveTask[]
   onTaskClick: (task: HiveTask) => void
@@ -76,10 +78,16 @@ interface TaskCalendarProps {
   /** task name → assignees, for the "Assignee" grouping. */
   assigneesByTask?: Record<string, HiveTaskAssignee[]>
   /**
-   * Reschedule a task after it is dragged onto another day. Receives the new
-   * dates (span length preserved). Omit to disable drag-between-days.
+   * Reschedule a task after it is dragged onto another day (span length
+   * preserved) or onto a time slot. `times` carries start_time / due_time
+   * changes when the drop sets or clears a time. Omit to disable dragging.
    */
-  onReschedule?: (task: HiveTask, startDate: string | null, dueDate: string | null) => void | Promise<void>
+  onReschedule?: (
+    task: HiveTask,
+    startDate: string | null,
+    dueDate: string | null,
+    times?: TimeUpdates,
+  ) => void | Promise<void>
 }
 
 type GroupBy = "none" | "status" | "priority" | "project" | "assignee"
@@ -166,8 +174,9 @@ const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frid
 const MODES: CalendarMode[] = ["month", "week", "day"]
 
 /**
- * Task calendar with Month / Week / Day modes. Tasks are laid out on their due
- * date; tasks without a due date are surfaced in a tray beneath the grid so
+ * Task calendar with Month / Week / Day modes. Month lays tasks out as chips on
+ * every day they span; Week and Day add hour gridlines, placing timed tasks at
+ * their time. Tasks without dates are surfaced in a tray beneath the grid so
  * they aren't silently hidden.
  */
 export function TaskCalendar({
@@ -276,9 +285,27 @@ export function TaskCalendar({
     return applyOrder(key, list.map((t) => t.name)).map((n) => byName.get(n)!).filter(Boolean)
   }, [spans, applyOrder])
 
+  // Time-grid drops are resolved from the live pointer position against the
+  // live column rect, so auto-scrolling during the drag can't skew the time.
+  const columnEls = useRef(new Map<string, HTMLDivElement>())
+  const registerColumn = useCallback((dayKey: string, el: HTMLDivElement | null) => {
+    if (el) columnEls.current.set(dayKey, el)
+    else columnEls.current.delete(dayKey)
+  }, [])
+  const pointerY = useRef(0)
+  const grabOffsetY = useRef(0)
+  const onPointerMove = useCallback((e: PointerEvent) => { pointerY.current = e.clientY }, [])
+
   const handleDragStart = (event: DragStartEvent) => {
-    const name = String(event.active.id).split("|")[1]
+    const parts = String(event.active.id).split("|")
+    const name = parts[parts.length - 1]
     setActiveTask(spans.find((s) => s.task.name === name)?.task ?? null)
+    const start = event.activatorEvent as PointerEvent
+    pointerY.current = start.clientY ?? 0
+    // Keep a block's top edge where it lands, rather than where it was grabbed.
+    const block = (start.target as HTMLElement | null)?.closest?.("[data-timed-block]")
+    grabOffsetY.current = block ? pointerY.current - block.getBoundingClientRect().top : 0
+    window.addEventListener("pointermove", onPointerMove)
   }
 
   /**
@@ -289,15 +316,61 @@ export function TaskCalendar({
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     setActiveTask(null)
+    window.removeEventListener("pointermove", onPointerMove)
     if (!over) return
 
-    const [fromDay, taskName] = String(active.id).split("|")
+    // Sources: all-day chips "<day>|<task>", time-grid blocks "timed|<day>|<task>".
+    const parts = String(active.id).split("|")
+    const fromTimed = parts[0] === "timed"
+    const fromDay = fromTimed ? parts[1] : parts[0]
+    const taskName = parts[parts.length - 1]
+    // Targets: "slot:<day>" (hour grid), "day:<day>" (cell / all-day lane), or a chip.
     const overId = String(over.id)
-    const toDay = overId.startsWith("day:") ? overId.slice(4) : overId.split("|")[0]
+    const toSlot = overId.startsWith("slot:")
+    const toDay = toSlot ? overId.slice(5) : overId.startsWith("day:") ? overId.slice(4) : overId.split("|")[0]
     if (!toDay || !taskName) return
 
     const task = spans.find((s) => s.task.name === taskName)?.task
     if (!task) return
+
+    if (toSlot || fromTimed) {
+      if (!onReschedule) return
+      const delta = differenceInCalendarDays(new Date(`${toDay}T00:00:00`), new Date(`${fromDay}T00:00:00`))
+      const shift = (d: string | null) =>
+        d ? format(addDays(new Date(`${d.slice(0, 10)}T00:00:00`), delta), "yyyy-MM-dd") : null
+      const newStart = shift(task.start_date)
+      const newDue = shift(task.due_date)
+      const slot = fromTimed ? timedSlot(task, fromDay) : null
+      const times: TimeUpdates = {}
+
+      if (toSlot) {
+        const col = columnEls.current.get(toDay)
+        if (!col) return
+        const raw = ((pointerY.current - grabOffsetY.current - col.getBoundingClientRect().top) / HOUR_PX) * 60
+        const mins = Math.max(0, Math.min(24 * 60 - SNAP_MIN, Math.round(raw / SNAP_MIN) * SNAP_MIN))
+        if (slot?.field === "window") {
+          // Keep the window's length.
+          times.start_time = toServerTime(minutesToHHmm(mins))
+          times.due_time = toServerTime(minutesToHHmm(Math.min(mins + (slot.end - slot.start), 24 * 60 - 1)))
+        } else if (slot?.field === "start") {
+          times.start_time = toServerTime(minutesToHHmm(mins))
+        } else if (slot?.field === "due") {
+          times.due_time = toServerTime(minutesToHHmm(mins))
+        } else if (newDue === toDay) {
+          // An all-day chip dropped on the grid gets a time on the day it landed.
+          times.due_time = toServerTime(minutesToHHmm(mins))
+        } else if (newStart === toDay) {
+          times.start_time = toServerTime(minutesToHHmm(mins))
+        }
+        if (!delta && Object.keys(times).length === 0) return
+      } else {
+        // A timed block dropped on the all-day lane loses that day's time.
+        if (slot?.field === "window" || slot?.field === "start") times.start_time = null
+        if (slot?.field === "window" || slot?.field === "due") times.due_time = null
+      }
+      onReschedule(task, newStart, newDue, times)
+      return
+    }
 
     if (toDay === fromDay) {
       // Reorder within the day: move the dragged chip to the target's position.
@@ -346,6 +419,7 @@ export function TaskCalendar({
     () => eachDayOfInterval({ start: startOfWeek(cursor, weekOpts), end: endOfWeek(cursor, weekOpts) }),
     [cursor, weekStartsOn],
   )
+  const dayOnly = useMemo(() => [cursor], [cursor])
   /**
    * Overdue tasks whose span falls entirely outside the dates on screen — in a
    * week view an item due last week simply has no column, so without this it
@@ -489,8 +563,9 @@ export function TaskCalendar({
         </div>
       )}
 
-      {/* Month + week grids share one drag context: drop a chip on another
-          day to reschedule, or onto another chip to reorder within the day. */}
+      {/* All views share one drag context: drop a chip on another day to
+          reschedule, onto another chip to reorder within the day, or onto the
+          hour grid to set a time. */}
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       {/* Month view */}
       {mode === "month" && (
@@ -539,38 +614,16 @@ export function TaskCalendar({
         </div>
       )}
 
-      {/* Week view */}
-      {mode === "week" && (
-        <div className="overflow-hidden rounded-md border">
-          <div className="grid grid-cols-7">
-            {weekDays.map((day) => {
-              const dayKey = format(day, "yyyy-MM-dd")
-              const list = dayTasks(day)
-              return (
-                <DroppableDay key={dayKey} dayKey={dayKey} className="border-r p-2 last:border-r-0">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">{format(day, "EEE")}</span>
-                    <span
-                      className={cn(
-                        "flex size-6 items-center justify-center rounded-full text-xs",
-                        isToday(day) && "bg-primary font-semibold text-primary-foreground",
-                      )}
-                    >
-                      {format(day, "d")}
-                    </span>
-                  </div>
-                  <div className="max-h-[440px] space-y-1 overflow-y-auto">
-                    {list.length === 0 ? (
-                      <p className="px-1 text-[11px] text-muted-foreground/60">—</p>
-                    ) : (
-                      list.map((t) => chip(t, dayKey))
-                    )}
-                  </div>
-                </DroppableDay>
-              )
-            })}
-          </div>
-        </div>
+      {/* Week and Day views: all-day lane + hour grid */}
+      {(mode === "week" || mode === "day") && (
+        <TaskTimeGrid
+          days={mode === "week" ? weekDays : dayOnly}
+          tasksForDay={dayTasks}
+          colorFor={colorFor}
+          renderChip={chip}
+          onTaskClick={onTaskClick}
+          registerColumn={registerColumn}
+        />
       )}
 
         <DragOverlay dropAnimation={null}>
@@ -582,46 +635,6 @@ export function TaskCalendar({
           ) : null}
         </DragOverlay>
       </DndContext>
-
-      {/* Day view */}
-      {mode === "day" && (
-        <div className="rounded-md border">
-          <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-2">
-            <span className="text-sm font-medium">{format(cursor, "EEEE")}</span>
-            <span
-              className={cn(
-                "flex size-7 items-center justify-center rounded-full text-sm",
-                isToday(cursor) && "bg-primary font-semibold text-primary-foreground",
-              )}
-            >
-              {format(cursor, "d")}
-            </span>
-          </div>
-          <div className="divide-y">
-            {dayTasks(cursor).length === 0 ? (
-              <p className="px-3 py-8 text-center text-sm text-muted-foreground">No tasks on this day.</p>
-            ) : (
-              dayTasks(cursor).map((task) => (
-                <button
-                  key={task.name}
-                  type="button"
-                  onClick={() => onTaskClick(task)}
-                  className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-accent"
-                >
-                  <span className={cn("size-2 shrink-0 rounded-full", colorFor(task))} />
-                  <span className="min-w-0 flex-1 truncate text-sm">{task.title}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{task.status}</span>
-                  {task.priority && (
-                    <Badge variant={TASK_PRIORITY_VARIANT[task.priority] ?? "outline"} className="shrink-0">
-                      {task.priority}
-                    </Badge>
-                  )}
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Tasks with no due date */}
       {undated.length > 0 && (

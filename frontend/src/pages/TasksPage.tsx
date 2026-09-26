@@ -69,7 +69,7 @@ import {
 } from "@/components/ui/breadcrumb"
 import { CreateTaskDialog } from "@/components/CreateTaskDialog"
 import { TaskKanban } from "@/components/TaskKanban"
-import { TaskCalendar } from "@/components/TaskCalendar"
+import { TaskCalendar, type TimeUpdates } from "@/components/TaskCalendar"
 import { TaskTimeline } from "@/components/TaskTimeline"
 import { TaskListTable, type TaskRow } from "@/components/TaskListTable"
 import { TaskDetailSheet } from "@/components/TaskDetailSheet"
@@ -407,13 +407,22 @@ export function TasksPage() {
 
   // Dragging a task onto another calendar day shifts its whole span.
   const handleReschedule = useCallback(async (
-    task: HiveTask, startDate: string | null, dueDate: string | null,
+    task: HiveTask, startDate: string | null, dueDate: string | null, times?: TimeUpdates,
   ) => {
+    const values = { start_date: startDate, due_date: dueDate, ...(times ?? {}) }
+    // Optimistic so a dropped calendar block doesn't jump back while saving.
+    const optimistic = (current: HiveTask[] | undefined) =>
+      (current ?? []).map((t) => (t.name === task.name ? { ...t, ...values } : t))
     try {
-      await updateDoc("Hive Task", task.name, { start_date: startDate, due_date: dueDate })
-      tasksMutate()
-    } catch {
-      toast.error("Failed to move task")
+      await tasksMutate(
+        async (current) => {
+          await updateDoc("Hive Task", task.name, values)
+          return optimistic(current)
+        },
+        { optimisticData: optimistic, rollbackOnError: true, revalidate: true },
+      )
+    } catch (err) {
+      toast.error(getFrappeErrorMessage(err, "Failed to move task"))
     }
   }, [updateDoc, tasksMutate])
 
