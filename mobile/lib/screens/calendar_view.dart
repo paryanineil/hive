@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models.dart';
 import '../task_time.dart';
 import '../theme.dart';
 import '../widgets/task_tile.dart';
+import 'day_schedule.dart';
 
 String _dayKey(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -41,8 +43,10 @@ List<_Span> _buildSpans(List<Task> tasks) {
 }
 
 /// Calendar with the day's tasks below. Opens as a compact one-week strip so
-/// the task list gets the screen; the chevron handle expands it to a full
-/// Monday-first month grid, and picking a day there collapses it back.
+/// the day gets the screen; the chevron handle expands it to a full
+/// Monday-first month grid, and picking a day there collapses it back. The day
+/// shows as an hour-gridline schedule or as a task list (header toggle,
+/// remembered).
 class CalendarView extends StatefulWidget {
   const CalendarView({
     super.key,
@@ -63,6 +67,8 @@ class _CalendarViewState extends State<CalendarView> {
   late DateTime _month; // first day of the shown month (expanded mode)
   late DateTime _selected;
   bool _expanded = false;
+  bool _schedule = true;
+  static const _prefSchedule = 'calendar_day_schedule';
 
   @override
   void initState() {
@@ -70,6 +76,15 @@ class _CalendarViewState extends State<CalendarView> {
     final now = DateTime.now();
     _month = DateTime(now.year, now.month, 1);
     _selected = DateTime(now.year, now.month, now.day);
+    SharedPreferences.getInstance().then((p) {
+      final saved = p.getBool(_prefSchedule);
+      if (saved != null && mounted) setState(() => _schedule = saved);
+    });
+  }
+
+  void _toggleSchedule() {
+    setState(() => _schedule = !_schedule);
+    SharedPreferences.getInstance().then((p) => p.setBool(_prefSchedule, _schedule));
   }
 
   /// Monday of the week containing [d].
@@ -140,6 +155,13 @@ class _CalendarViewState extends State<CalendarView> {
               Text(DateFormat('MMMM yyyy').format(headerMonth),
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               const Spacer(),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: _schedule ? 'Show as list' : 'Show hour schedule',
+                icon: Icon(_schedule ? Icons.view_agenda_outlined : Icons.view_day_outlined,
+                    size: 20, color: kMuted),
+                onPressed: _toggleSchedule,
+              ),
               TextButton(
                 onPressed: _goToday,
                 child: const Text('Today', style: TextStyle(color: kOrange)),
@@ -228,20 +250,29 @@ class _CalendarViewState extends State<CalendarView> {
           ),
         const Divider(height: 1),
         Expanded(
-          child: selectedTasks.isEmpty
-              ? Center(
-                  child: Text('Nothing on ${DateFormat('EEE, MMM d').format(_selected)}',
-                      style: const TextStyle(color: kMuted)))
-              : ListView.separated(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: selectedTasks.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (_, i) => TaskTile(
-                    task: selectedTasks[i],
-                    projectTitle: widget.projectTitles[selectedTasks[i].project] ?? '',
-                    onTap: () => widget.onOpen(selectedTasks[i]),
-                  ),
-                ),
+          child: _schedule
+              ? DaySchedule(
+                  // A fresh schedule per day so it re-scrolls to that day's first task.
+                  key: ValueKey(selectedKey),
+                  tasks: selectedTasks,
+                  dayKey: selectedKey,
+                  isToday: selectedKey == todayKey,
+                  onOpen: widget.onOpen,
+                )
+              : selectedTasks.isEmpty
+                  ? Center(
+                      child: Text('Nothing on ${DateFormat('EEE, MMM d').format(_selected)}',
+                          style: const TextStyle(color: kMuted)))
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(12),
+                      itemCount: selectedTasks.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (_, i) => TaskTile(
+                        task: selectedTasks[i],
+                        projectTitle: widget.projectTitles[selectedTasks[i].project] ?? '',
+                        onTap: () => widget.onOpen(selectedTasks[i]),
+                      ),
+                    ),
         ),
       ],
     );
