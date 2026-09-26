@@ -8,8 +8,15 @@ import { getDueState } from "@/lib/dueDate"
 import { formatTime, timeToMinutes } from "@/lib/taskTime"
 import type { HiveTask } from "@/types"
 
-export const HOUR_PX = 48
 export const SNAP_MIN = 15
+/**
+ * Hour rows are sized so about this many hours fit in the visible grid; the
+ * clamp keeps blocks legible on tiny screens and not bloated on huge ones.
+ */
+const VISIBLE_HOURS = 12
+const MIN_HOUR_PX = 28
+const MAX_HOUR_PX = 72
+const FALLBACK_HOUR_PX = 40
 const DAY_MIN = 24 * 60
 /** Deadline-style tasks (a single time) draw as a one-hour block, matching the Google Calendar sync. */
 const DEFAULT_MIN = 60
@@ -106,12 +113,12 @@ function hourLabel(h: number): string {
 }
 
 function TimedBlock({
-  item, dayKey, color, onClick, detailed,
-}: { item: TimedItem; dayKey: string; color: string; onClick: () => void; detailed: boolean }) {
+  item, dayKey, color, onClick, detailed, hourPx,
+}: { item: TimedItem; dayKey: string; color: string; onClick: () => void; detailed: boolean; hourPx: number }) {
   const { task } = item
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `timed|${dayKey}|${task.name}` })
   const overdue = getDueState(task.due_date, task.status, task.due_time) === "overdue"
-  const heightPx = Math.max(((item.end - item.start) / 60) * HOUR_PX, 22)
+  const heightPx = Math.max(((item.end - item.start) / 60) * hourPx, 22)
   const compact = heightPx < 36
   const range = item.field === "window"
     ? `${formatTime(minutesToHHmm(item.start))} – ${formatTime(minutesToHHmm(item.end))}`
@@ -124,7 +131,7 @@ function TimedBlock({
       onClick={onClick}
       title={`${task.title} · ${range}${overdue ? " — overdue" : ""}`}
       style={{
-        top: (item.start / 60) * HOUR_PX,
+        top: (item.start / 60) * hourPx,
         height: heightPx,
         left: `calc(${(item.col / item.cols) * 100}% + 2px)`,
         width: `calc(${100 / item.cols}% - 4px)`,
@@ -168,19 +175,20 @@ function AllDayLane({ dayKey, children }: { dayKey: string; children: ReactNode 
 }
 
 function SlotColumn({
-  dayKey, registerColumn, children, className,
+  dayKey, registerColumn, children, className, height,
 }: {
   dayKey: string
   registerColumn: (dayKey: string, el: HTMLDivElement | null) => void
   children: ReactNode
   className?: string
+  height: number
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `slot:${dayKey}` })
   return (
     <div
       ref={(el) => { setNodeRef(el); registerColumn(dayKey, el) }}
       className={cn("relative border-r last:border-r-0", isOver && "bg-primary/5", className)}
-      style={{ height: 24 * HOUR_PX }}
+      style={{ height }}
     >
       {children}
     </div>
@@ -207,7 +215,10 @@ interface TaskTimeGridProps {
 export function TaskTimeGrid({ days, tasksForDay, colorFor, renderChip, onTaskClick, registerColumn }: TaskTimeGridProps) {
   const outerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const headerRef = useRef<HTMLDivElement>(null)
   const [fillPx, setFillPx] = useState<number | null>(null)
+  const [hourPx, setHourPx] = useState<number | null>(null)
+  const hp = hourPx ?? FALLBACK_HOUR_PX
   const [now, setNow] = useState(() => new Date())
   const single = days.length === 1
 
@@ -226,19 +237,20 @@ export function TaskTimeGrid({ days, tasksForDay, colorFor, renderChip, onTaskCl
 
   // Scroll to the first timed task (or now, or 8 AM) whenever the visible days change.
   const daysKey = layouts.map((l) => l.dayKey).join(",")
+  const measured = hourPx !== null
   useEffect(() => {
     const el = scrollRef.current
-    if (!el) return
+    if (!el || !measured) return
     const starts = layouts.flatMap((l) => l.timed.map((t) => t.start))
     const showsToday = layouts.some((l) => isToday(l.day))
     const nowMin = new Date().getHours() * 60
     const target = starts.length
       ? Math.min(...starts, showsToday ? nowMin : DAY_MIN)
       : showsToday ? nowMin : 8 * 60
-    el.scrollTop = Math.max(0, ((target - 60) / 60) * HOUR_PX)
-    // Only on navigation, not on every data refresh.
+    el.scrollTop = Math.max(0, ((target - 60) / 60) * hp)
+    // Only on navigation (and once the row height is known), not on every data refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [daysKey])
+  }, [daysKey, measured])
 
   // Stretch the grid to the bottom of the window (as measured with the page
   // scrolled to the top), so the hours get the screen instead of a short box.
@@ -253,6 +265,10 @@ export function TaskTimeGrid({ days, tasksForDay, colorFor, renderChip, onTaskCl
       const reserve = (pane ? parseFloat(getComputedStyle(pane).paddingBottom) || 0 : 0) + 4
       const next = Math.max(MIN_GRID_PX, Math.floor(window.innerHeight - top - reserve))
       setFillPx((prev) => (prev !== null && Math.abs(prev - next) <= 1 ? prev : next))
+      // Size hour rows so ~12 hours fit below the sticky header + all-day lane.
+      const headerH = headerRef.current?.offsetHeight ?? 0
+      const hour = Math.round(Math.min(MAX_HOUR_PX, Math.max(MIN_HOUR_PX, (next - headerH) / VISIBLE_HOURS)))
+      setHourPx((prev) => (prev !== null && Math.abs(prev - hour) <= 1 ? prev : hour))
     }
     measure()
     window.addEventListener("resize", measure)
@@ -260,7 +276,7 @@ export function TaskTimeGrid({ days, tasksForDay, colorFor, renderChip, onTaskCl
   })
 
   const cols = `56px repeat(${days.length}, minmax(${single ? 0 : 88}px, 1fr))`
-  const nowTop = ((now.getHours() * 60 + now.getMinutes()) / 60) * HOUR_PX
+  const nowTop = ((now.getHours() * 60 + now.getMinutes()) / 60) * hp
 
   return (
     <div ref={outerRef} className="overflow-hidden rounded-md border">
@@ -268,7 +284,7 @@ export function TaskTimeGrid({ days, tasksForDay, colorFor, renderChip, onTaskCl
           grid share column widths (a separate body scrollbar would misalign them). */}
       <div ref={scrollRef} className="overflow-auto" style={{ maxHeight: fillPx ?? MIN_GRID_PX }}>
         <div style={{ minWidth: single ? undefined : 56 + days.length * 88 }}>
-          <div className="sticky top-0 z-30 bg-background">
+          <div ref={headerRef} className="sticky top-0 z-30 bg-background">
             {/* Day headers */}
             <div className="grid border-b bg-muted/40" style={{ gridTemplateColumns: cols }}>
               <div className="border-r" />
@@ -304,12 +320,12 @@ export function TaskTimeGrid({ days, tasksForDay, colorFor, renderChip, onTaskCl
           <div>
             <div className="relative grid" style={{ gridTemplateColumns: cols }}>
               {/* Gutter with hour labels */}
-              <div className="relative border-r" style={{ height: 24 * HOUR_PX }}>
+              <div className="relative border-r" style={{ height: 24 * hp }}>
                 {Array.from({ length: 24 }, (_, h) => (
                   <span
                     key={h}
                     className="absolute right-1.5 -translate-y-1/2 text-[10px] tabular-nums text-muted-foreground"
-                    style={{ top: h * HOUR_PX }}
+                    style={{ top: h * hp }}
                   >
                     {h === 0 ? "" : hourLabel(h)}
                   </span>
@@ -322,12 +338,13 @@ export function TaskTimeGrid({ days, tasksForDay, colorFor, renderChip, onTaskCl
                   dayKey={dayKey}
                   registerColumn={registerColumn}
                   className={cn(isToday(day) && "bg-primary/[0.03]")}
+                  height={24 * hp}
                 >
-                  {/* Hour and half-hour gridlines */}
+                  {/* Hour gridlines, plus half-hour lines when rows are tall enough to read them */}
                   {Array.from({ length: 24 }, (_, h) => (
-                    <div key={h} className="pointer-events-none absolute inset-x-0" style={{ top: h * HOUR_PX, height: HOUR_PX }}>
+                    <div key={h} className="pointer-events-none absolute inset-x-0" style={{ top: h * hp, height: hp }}>
                       <div className={cn("h-1/2", h > 0 && "border-t border-border")} />
-                      <div className="h-1/2 border-t border-dashed border-border/50" />
+                      {hp >= 32 && <div className="h-1/2 border-t border-dashed border-border/50" />}
                     </div>
                   ))}
 
@@ -339,6 +356,7 @@ export function TaskTimeGrid({ days, tasksForDay, colorFor, renderChip, onTaskCl
                       color={colorFor(item.task)}
                       onClick={() => onTaskClick(item.task)}
                       detailed={single}
+                      hourPx={hp}
                     />
                   ))}
 

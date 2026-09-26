@@ -45,7 +45,7 @@ import { useCalendarOrder } from "@/hooks/useCalendarOrder"
 import { useGroupColors, COLOR_CHOICES } from "@/hooks/useGroupColors"
 import { getDueState } from "@/lib/dueDate"
 import { formatTime, timeToMinutes, toServerTime } from "@/lib/taskTime"
-import { TaskTimeGrid, HOUR_PX, SNAP_MIN, minutesToHHmm, timedSlot } from "@/components/TaskTimeGrid"
+import { TaskTimeGrid, SNAP_MIN, minutesToHHmm, timedSlot } from "@/components/TaskTimeGrid"
 
 /** The task's time on a given day: start time on its start day, else due time on its due day. */
 function timeOnDay(task: HiveTask, dayKey: string): string | undefined {
@@ -346,7 +346,9 @@ export function TaskCalendar({
       if (toSlot) {
         const col = columnEls.current.get(toDay)
         if (!col) return
-        const raw = ((pointerY.current - grabOffsetY.current - col.getBoundingClientRect().top) / HOUR_PX) * 60
+        // The column spans the whole day, so its live height gives the row size.
+        const rect = col.getBoundingClientRect()
+        const raw = ((pointerY.current - grabOffsetY.current - rect.top) / rect.height) * 24 * 60
         const mins = Math.max(0, Math.min(24 * 60 - SNAP_MIN, Math.round(raw / SNAP_MIN) * SNAP_MIN))
         if (slot?.field === "window") {
           // Keep the window's length.
