@@ -158,6 +158,26 @@ function DraggableChip({
   )
 }
 
+/** A tray item (no-dates / out-of-view overdue) that can be dragged onto the calendar. */
+function TrayChip({
+  id, title, className, onClick, children,
+}: { id: string; title: string; className: string; onClick: () => void; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id })
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      onClick={onClick}
+      title={title}
+      className={cn(className, "cursor-grab active:cursor-grabbing", isDragging && "opacity-40")}
+      {...listeners}
+      {...attributes}
+    >
+      {children}
+    </button>
+  )
+}
+
 /** A day cell that accepts dropped chips. */
 function DroppableDay({
   dayKey, className, children,
@@ -300,7 +320,7 @@ export function TaskCalendar({
   const handleDragStart = (event: DragStartEvent) => {
     const parts = String(event.active.id).split("|")
     const name = parts[parts.length - 1]
-    setActiveTask(spans.find((s) => s.task.name === name)?.task ?? null)
+    setActiveTask(tasks.find((t) => t.name === name) ?? null)
     const start = event.activatorEvent as PointerEvent
     pointerY.current = start.clientY ?? 0
     // Keep a block's top edge where it lands, rather than where it was grabbed.
@@ -320,10 +340,11 @@ export function TaskCalendar({
     window.removeEventListener("pointermove", onPointerMove)
     if (!over) return
 
-    // Sources: all-day chips "<day>|<task>", time-grid blocks "timed|<day>|<task>".
+    // Sources: all-day chips "<day>|<task>", time-grid blocks "timed|<day>|<task>",
+    // and the trays below the grid: "undated|<task>", "overdue|<task>".
     const parts = String(active.id).split("|")
     const fromTimed = parts[0] === "timed"
-    const fromDay = fromTimed ? parts[1] : parts[0]
+    const fromTray = parts[0] === "undated" || parts[0] === "overdue" ? parts[0] : null
     const taskName = parts[parts.length - 1]
     // Targets: "slot:<day>" (hour grid), "day:<day>" (cell / all-day lane), or a chip.
     const overId = String(over.id)
@@ -331,8 +352,37 @@ export function TaskCalendar({
     const toDay = toSlot ? overId.slice(5) : overId.startsWith("day:") ? overId.slice(4) : overId.split("|")[0]
     if (!toDay || !taskName) return
 
-    const task = spans.find((s) => s.task.name === taskName)?.task
+    const task = tasks.find((t) => t.name === taskName)
     if (!task) return
+
+    /** Minutes into the day at the drop point on an hour column (15-minute snap). */
+    const slotMinutes = (): number | null => {
+      const col = columnEls.current.get(toDay)
+      if (!col) return null
+      // The column spans the whole day, so its live height gives the row size.
+      const rect = col.getBoundingClientRect()
+      const raw = ((pointerY.current - grabOffsetY.current - rect.top) / rect.height) * 24 * 60
+      return Math.max(0, Math.min(24 * 60 - SNAP_MIN, Math.round(raw / SNAP_MIN) * SNAP_MIN))
+    }
+
+    if (fromTray === "undated") {
+      // An undated task becomes due on the day it's dropped on (at the slot's time on the grid).
+      if (!onReschedule) return
+      const times: TimeUpdates = {}
+      if (toSlot) {
+        const mins = slotMinutes()
+        if (mins === null) return
+        times.due_time = toServerTime(minutesToHHmm(mins))
+      }
+      onReschedule(task, null, toDay, times)
+      return
+    }
+
+    // An out-of-view overdue task moves as if grabbed by its due date (or its
+    // start date, if it has only that), keeping any span length.
+    const fromDay = fromTray === "overdue"
+      ? (task.due_date ?? task.start_date ?? toDay).slice(0, 10)
+      : fromTimed ? parts[1] : parts[0]
 
     if (toSlot || fromTimed) {
       if (!onReschedule) return
@@ -345,12 +395,8 @@ export function TaskCalendar({
       const times: TimeUpdates = {}
 
       if (toSlot) {
-        const col = columnEls.current.get(toDay)
-        if (!col) return
-        // The column spans the whole day, so its live height gives the row size.
-        const rect = col.getBoundingClientRect()
-        const raw = ((pointerY.current - grabOffsetY.current - rect.top) / rect.height) * 24 * 60
-        const mins = Math.max(0, Math.min(24 * 60 - SNAP_MIN, Math.round(raw / SNAP_MIN) * SNAP_MIN))
+        const mins = slotMinutes()
+        if (mins === null) return
         if (slot?.field === "window") {
           // Keep the window's length.
           times.start_time = toServerTime(minutesToHHmm(mins))
@@ -375,7 +421,7 @@ export function TaskCalendar({
       return
     }
 
-    if (toDay === fromDay) {
+    if (toDay === fromDay && !fromTray) {
       // Reorder within the day: move the dragged chip to the target's position.
       const names = dayTasks(new Date(`${toDay}T00:00:00`)).map((t) => t.name)
       const overName = overId.includes("|") ? overId.split("|")[1] : null
@@ -638,24 +684,26 @@ export function TaskCalendar({
             </div>
           ) : null}
         </DragOverlay>
-      </DndContext>
 
       {/* Tasks with no due date */}
       {undated.length > 0 && (
         <div className="rounded-md border p-3">
-          <p className="mb-2 text-xs font-medium text-muted-foreground">No dates ({undated.length})</p>
+          <p className="mb-2 text-xs font-medium text-muted-foreground">
+            No dates ({undated.length})
+            {onReschedule && <span className="font-normal"> — drag onto a day or time to schedule</span>}
+          </p>
           <div className="flex flex-wrap gap-1.5">
             {undated.map((task) => (
-              <button
+              <TrayChip
                 key={task.name}
-                type="button"
+                id={`undated|${task.name}`}
                 onClick={() => onTaskClick(task)}
                 title={task.title}
                 className="flex max-w-[220px] items-center gap-1.5 rounded bg-card px-2 py-1 text-xs shadow-sm ring-1 ring-border transition-colors hover:bg-accent"
               >
                 <span className={cn("size-1.5 shrink-0 rounded-full", colorFor(task))} />
                 <span className="truncate">{task.title}</span>
-              </button>
+              </TrayChip>
             ))}
           </div>
         </div>
@@ -667,13 +715,14 @@ export function TaskCalendar({
           <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-red-700 dark:text-red-400">
             <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} className="size-3.5" />
             Overdue ({hiddenOverdue.length}) — not shown in this {mode}
+            {onReschedule && <span className="font-normal"> · drag onto a day or time to reschedule</span>}
           </p>
           {/* Can be a long list (every past-due task), so cap the height. */}
           <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
             {hiddenOverdue.map((task) => (
-              <button
+              <TrayChip
                 key={task.name}
-                type="button"
+                id={`overdue|${task.name}`}
                 onClick={() => onTaskClick(task)}
                 title={`${task.title} — due ${task.due_date}${task.due_time ? ` ${formatTime(task.due_time)}` : ""}`}
                 className="flex max-w-[240px] items-center gap-1.5 rounded bg-card px-2 py-1 text-xs shadow-sm ring-1 ring-red-700/40 transition-colors hover:bg-accent dark:ring-red-500/40"
@@ -686,11 +735,12 @@ export function TaskCalendar({
                     {task.due_time && ` · ${formatTime(task.due_time)}`}
                   </span>
                 )}
-              </button>
+              </TrayChip>
             ))}
           </div>
         </div>
       )}
+      </DndContext>
     </div>
   )
 }
