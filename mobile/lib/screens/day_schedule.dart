@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../calendar_drag.dart';
 import '../models.dart';
 import '../task_time.dart';
 import '../theme.dart';
@@ -121,6 +122,10 @@ String _minsLabel(int m) {
 
 /// One day with hour gridlines: all-day chips on top, timed tasks as blocks at
 /// their time (side by side when they overlap), and a now-line on today.
+///
+/// With [onDrop], tasks can be long-pressed and dragged: onto the hour grid to
+/// set a time, onto the all-day row to clear it, or out to the calendar's day
+/// cells (handled by the calendar). Drops from elsewhere land here too.
 class DaySchedule extends StatefulWidget {
   const DaySchedule({
     super.key,
@@ -128,12 +133,16 @@ class DaySchedule extends StatefulWidget {
     required this.dayKey,
     required this.isToday,
     required this.onOpen,
+    this.onDrop,
   });
 
   final List<Task> tasks;
   final String dayKey;
   final bool isToday;
   final void Function(Task) onOpen;
+
+  /// A drag dropped on this day: [minutes] on the hour grid, or [toAllDay].
+  final void Function(CalDrag drag, {int? minutes, bool toAllDay})? onDrop;
 
   @override
   State<DaySchedule> createState() => _DayScheduleState();
@@ -145,6 +154,11 @@ class _DayScheduleState extends State<DaySchedule> {
   DateTime _now = DateTime.now();
   late final int _targetMin;
   bool _didInitialScroll = false;
+  final _gridKey = GlobalKey();
+  final _viewportKey = GlobalKey();
+  double _hp = 40;
+  Timer? _autoScroll;
+  int _autoDir = 0;
 
   @override
   void initState() {
@@ -169,8 +183,59 @@ class _DayScheduleState extends State<DaySchedule> {
   @override
   void dispose() {
     _tick?.cancel();
+    _autoScroll?.cancel();
     _scroll.dispose();
     super.dispose();
+  }
+
+  /// Keep scrolling while a drag hovers near the top/bottom edge of the grid.
+  void _setAutoScroll(int dir) {
+    if (dir == _autoDir) return;
+    _autoDir = dir;
+    _autoScroll?.cancel();
+    _autoScroll = null;
+    if (dir == 0) return;
+    _autoScroll = Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (!_scroll.hasClients) return;
+      final pos = _scroll.position;
+      final next = (pos.pixels + dir * 8).clamp(0.0, pos.maxScrollExtent);
+      if (next == pos.pixels) return;
+      _scroll.jumpTo(next);
+    });
+  }
+
+  void _onGridMove(DragTargetDetails<CalDrag> details) {
+    final vb = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (vb == null) return;
+    final top = vb.localToGlobal(Offset.zero).dy;
+    final bottom = top + vb.size.height;
+    final y = details.offset.dy; // top edge of the dragged card
+    _setAutoScroll(y < top + 16 ? -1 : (y + 40 > bottom - 16 ? 1 : 0));
+  }
+
+  /// Minutes into the day where the dragged card's top edge landed (15-min snap).
+  int? _dropMinutes(Offset globalTopLeft) {
+    final box = _gridKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return null;
+    final local = box.globalToLocal(globalTopLeft);
+    final raw = local.dy / _hp * 60;
+    return ((raw / 15).round() * 15).clamp(0, _dayMin - 15);
+  }
+
+  Widget _draggable(
+    CalDrag data,
+    Widget child, {
+    double? width,
+    double? height,
+  }) {
+    if (widget.onDrop == null) return child;
+    return LongPressDraggable<CalDrag>(
+      data: data,
+      feedback: calDragFeedback(data.task, width: width ?? 200, height: height),
+      childWhenDragging: Opacity(opacity: 0.35, child: child),
+      onDragEnd: (_) => _setAutoScroll(0),
+      child: child,
+    );
   }
 
   /// The row height is only known at layout, so the first scroll (to an hour
@@ -194,36 +259,66 @@ class _DayScheduleState extends State<DaySchedule> {
     final laid = layoutDay(widget.tasks, widget.dayKey);
     return Column(
       children: [
-        if (laid.allDay.isNotEmpty)
-          Container(
-            width: double.infinity,
-            constraints: const BoxConstraints(maxHeight: 96),
-            padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: kBorder)),
-            ),
-            child: SingleChildScrollView(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(
-                    width: _gutter - 8,
-                    child: Padding(
-                      padding: EdgeInsets.only(top: 6),
-                      child: Text(
-                        'All day',
-                        style: TextStyle(fontSize: 10, color: kMuted),
+        if (laid.allDay.isNotEmpty || widget.onDrop != null)
+          DragTarget<CalDrag>(
+            onAcceptWithDetails: (d) =>
+                widget.onDrop?.call(d.data, toAllDay: true),
+            builder: (context, candidates, _) => Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(minHeight: 30, maxHeight: 96),
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+              decoration: BoxDecoration(
+                color: candidates.isNotEmpty
+                    ? kOrange.withValues(alpha: 0.12)
+                    : null,
+                border: const Border(bottom: BorderSide(color: kBorder)),
+              ),
+              child: SingleChildScrollView(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(
+                      width: _gutter - 8,
+                      child: Padding(
+                        padding: EdgeInsets.only(top: 6),
+                        child: Text(
+                          'All day',
+                          style: TextStyle(fontSize: 10, color: kMuted),
+                        ),
                       ),
                     ),
-                  ),
-                  Expanded(
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [for (final t in laid.allDay) _allDayChip(t)],
+                    Expanded(
+                      child: laid.allDay.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                candidates.isNotEmpty
+                                    ? 'Drop to remove the time'
+                                    : '',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: kMuted,
+                                ),
+                              ),
+                            )
+                          : Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                for (final t in laid.allDay)
+                                  _draggable(
+                                    CalDrag(
+                                      t,
+                                      CalDragKind.chip,
+                                      fromDay: widget.dayKey,
+                                    ),
+                                    _allDayChip(t),
+                                  ),
+                              ],
+                            ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -235,84 +330,119 @@ class _DayScheduleState extends State<DaySchedule> {
                 _maxHourPx,
               );
               _scheduleInitialScroll(hp);
+              _hp = hp;
               final colsWidth = box.maxWidth - _gutter - 8;
               return SingleChildScrollView(
+                key: _viewportKey,
                 controller: _scroll,
-                child: SizedBox(
-                  height: 24 * hp + 8,
-                  child: Stack(
-                    children: [
-                      // Hour + half-hour gridlines and labels.
-                      for (var h = 0; h < 24; h++) ...[
-                        Positioned(
-                          top: h * hp,
-                          left: _gutter,
-                          right: 0,
-                          child: Container(
-                            height: 1,
-                            color: h == 0 ? Colors.transparent : kBorder,
-                          ),
-                        ),
-                        Positioned(
-                          top: h * hp + hp / 2,
-                          left: _gutter,
-                          right: 0,
-                          child: Container(
-                            height: 1,
-                            color: kBorder.withValues(alpha: 0.35),
-                          ),
-                        ),
-                        if (h > 0)
+                child: DragTarget<CalDrag>(
+                  onMove: _onGridMove,
+                  onLeave: (_) => _setAutoScroll(0),
+                  onAcceptWithDetails: (d) {
+                    _setAutoScroll(0);
+                    final mins = _dropMinutes(d.offset);
+                    if (mins != null) {
+                      widget.onDrop?.call(d.data, minutes: mins);
+                    }
+                  },
+                  builder: (context, candidates, _) => SizedBox(
+                    key: _gridKey,
+                    height: 24 * hp + 8,
+                    child: Stack(
+                      children: [
+                        // Hour + half-hour gridlines and labels.
+                        for (var h = 0; h < 24; h++) ...[
                           Positioned(
-                            top: h * hp - 7,
-                            left: 0,
-                            width: _gutter - 6,
-                            child: Text(
-                              formatTime('${h.toString().padLeft(2, '0')}:00'),
-                              textAlign: TextAlign.right,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: kMuted,
+                            top: h * hp,
+                            left: _gutter,
+                            right: 0,
+                            child: Container(
+                              height: 1,
+                              color: h == 0 ? Colors.transparent : kBorder,
+                            ),
+                          ),
+                          Positioned(
+                            top: h * hp + hp / 2,
+                            left: _gutter,
+                            right: 0,
+                            child: Container(
+                              height: 1,
+                              color: kBorder.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          if (h > 0)
+                            Positioned(
+                              top: h * hp - 7,
+                              left: 0,
+                              width: _gutter - 6,
+                              child: Text(
+                                formatTime(
+                                  '${h.toString().padLeft(2, '0')}:00',
+                                ),
+                                textAlign: TextAlign.right,
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: kMuted,
+                                ),
+                              ),
+                            ),
+                        ],
+                        for (final b in laid.timed)
+                          Positioned(
+                            top: b.start / 60 * hp + 1,
+                            height: ((b.end - b.start) / 60 * hp - 2).clamp(
+                              24.0,
+                              double.infinity,
+                            ),
+                            left: _gutter + 2 + colsWidth * b.col / b.cols,
+                            width: colsWidth / b.cols - 4,
+                            child: _draggable(
+                              CalDrag(
+                                b.task,
+                                CalDragKind.timed,
+                                fromDay: widget.dayKey,
+                                field: b.window
+                                    ? TimedField.window
+                                    : (b.due
+                                          ? TimedField.due
+                                          : TimedField.start),
+                                start: b.start,
+                                end: b.end,
+                              ),
+                              _block(
+                                b,
+                                compact: (b.end - b.start) / 60 * hp < 40,
+                              ),
+                              width: colsWidth / b.cols - 4,
+                              height: ((b.end - b.start) / 60 * hp - 2).clamp(
+                                24.0,
+                                double.infinity,
                               ),
                             ),
                           ),
-                      ],
-                      for (final b in laid.timed)
-                        Positioned(
-                          top: b.start / 60 * hp + 1,
-                          height: ((b.end - b.start) / 60 * hp - 2).clamp(
-                            24.0,
-                            double.infinity,
-                          ),
-                          left: _gutter + 2 + colsWidth * b.col / b.cols,
-                          width: colsWidth / b.cols - 4,
-                          child: _block(
-                            b,
-                            compact: (b.end - b.start) / 60 * hp < 40,
-                          ),
-                        ),
-                      if (widget.isToday)
-                        Positioned(
-                          top: (_now.hour * 60 + _now.minute) / 60 * hp - 1,
-                          left: _gutter - 4,
-                          right: 0,
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: kOrange,
-                                  shape: BoxShape.circle,
+                        if (widget.isToday)
+                          Positioned(
+                            top: (_now.hour * 60 + _now.minute) / 60 * hp - 1,
+                            left: _gutter - 4,
+                            right: 0,
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: const BoxDecoration(
+                                    color: kOrange,
+                                    shape: BoxShape.circle,
+                                  ),
                                 ),
-                              ),
-                              Expanded(
-                                child: Container(height: 2, color: kOrange),
-                              ),
-                            ],
+                                Expanded(
+                                  child: Container(height: 2, color: kOrange),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               );

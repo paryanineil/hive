@@ -114,6 +114,19 @@ class TasksScreenState extends State<TasksScreen> {
         _ => _counts[key] ?? 0,
       };
 
+  /// Save a calendar drag-and-drop, then reload (which also undoes the
+  /// on-screen move if the server refused it).
+  Future<void> _reschedule(Task t, Map<String, Object?> values) async {
+    try {
+      await repo.updateTask(t.name, values);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+    await refresh();
+  }
+
   Future<void> _openTask(Task t) async {
     await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => TaskDetailScreen(taskName: t.name)));
@@ -239,6 +252,7 @@ class TasksScreenState extends State<TasksScreen> {
                                     tasks: _visible,
                                     projectTitles: _projectTitles,
                                     onOpen: _openTask,
+                                    onReschedule: _reschedule,
                                   )
                                 : _view == 'timeline'
                                     ? TimelineView(

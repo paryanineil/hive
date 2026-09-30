@@ -213,6 +213,17 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                                 builder: (_) => TaskDetailScreen(taskName: t.name)));
                             _load();
                           },
+                          onReschedule: (t, values) async {
+                            try {
+                              await repo.updateTask(t.name, values);
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context)
+                                    .showSnackBar(SnackBar(content: Text(e.toString())));
+                              }
+                            }
+                            await _load();
+                          },
                         )
                       : _view == 'timeline'
                           ? TimelineView(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../calendar_drag.dart';
 import '../models.dart';
 import '../task_time.dart';
 import '../theme.dart';
@@ -53,11 +54,16 @@ class CalendarView extends StatefulWidget {
     required this.tasks,
     required this.projectTitles,
     required this.onOpen,
+    this.onReschedule,
   });
 
   final List<Task> tasks;
   final Map<String, String> projectTitles;
   final void Function(Task) onOpen;
+
+  /// Save a drag-and-drop reschedule (task fields -> values) and reload.
+  /// Omit to disable dragging.
+  final Future<void> Function(Task task, Map<String, Object?> values)? onReschedule;
 
   @override
   State<CalendarView> createState() => _CalendarViewState();
@@ -68,6 +74,7 @@ class _CalendarViewState extends State<CalendarView> {
   late DateTime _selected;
   bool _expanded = false;
   bool _schedule = true;
+  bool _trayOpen = false;
   static const _prefSchedule = 'calendar_day_schedule';
 
   @override
@@ -80,6 +87,34 @@ class _CalendarViewState extends State<CalendarView> {
       final saved = p.getBool(_prefSchedule);
       if (saved != null && mounted) setState(() => _schedule = saved);
     });
+  }
+
+  /// Apply a drop: move the task on screen now, save through the parent (whose
+  /// reload also reverts it if the server refuses), and offer Undo.
+  Future<void> _drop(CalDrag drag, String toDay, {int? minutes, bool toAllDay = false}) async {
+    final save = widget.onReschedule;
+    if (save == null) return;
+    final values = rescheduleValues(drag, toDay, minutes: minutes, toAllDay: toAllDay);
+    if (values == null) return;
+    final task = drag.task;
+    final previous = {for (final k in values.keys) k: task.raw[k]};
+    setState(() => task.raw.addAll(values));
+
+    final messenger = ScaffoldMessenger.of(context);
+    final at = DateFormat('EEE, MMM d').format(DateTime.parse(toDay));
+    final time = minutes != null ? ' at ${formatTime(toServerTime('${(minutes ~/ 60).toString().padLeft(2, '0')}:${(minutes % 60).toString().padLeft(2, '0')}'))}' : '';
+    await save(task, values);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(
+      content: Text(toAllDay && minutes == null && drag.kind == CalDragKind.timed
+          ? 'Time removed'
+          : 'Moved to $at$time'),
+      action: SnackBarAction(
+        label: 'Undo',
+        textColor: kOrange,
+        onPressed: () => save(task, previous),
+      ),
+    ));
   }
 
   void _toggleSchedule() {
@@ -145,6 +180,7 @@ class _CalendarViewState extends State<CalendarView> {
         .toList();
 
     final headerMonth = _expanded ? _month : _selected;
+    final undated = widget.tasks.where((t) => t.startDate == null && t.dueDate == null).toList();
 
     return Column(
       children: [
@@ -152,9 +188,13 @@ class _CalendarViewState extends State<CalendarView> {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(
             children: [
-              Text(DateFormat('MMMM yyyy').format(headerMonth),
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-              const Spacer(),
+              // Shrinks with an ellipsis rather than pushing the buttons off a narrow screen.
+              Expanded(
+                child: Text(DateFormat('MMMM yyyy').format(headerMonth),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              ),
               IconButton(
                 visualDensity: VisualDensity.compact,
                 tooltip: _schedule ? 'Show as list' : 'Show hour schedule',
@@ -228,26 +268,7 @@ class _CalendarViewState extends State<CalendarView> {
             ),
           ),
         ),
-        if (hiddenOverdue.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-            child: InkWell(
-              onTap: () => _showList(context, 'Overdue', hiddenOverdue),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEF4444).withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.4)),
-                ),
-                child: Text(
-                  '⚠ ${hiddenOverdue.length} overdue task${hiddenOverdue.length == 1 ? '' : 's'} not in view — tap to see',
-                  style: const TextStyle(color: Color(0xFFEF4444), fontSize: 12.5),
-                ),
-              ),
-            ),
-          ),
+        if (hiddenOverdue.isNotEmpty || undated.isNotEmpty) _tray(hiddenOverdue, undated),
         const Divider(height: 1),
         Expanded(
           child: _schedule
@@ -258,6 +279,10 @@ class _CalendarViewState extends State<CalendarView> {
                   dayKey: selectedKey,
                   isToday: selectedKey == todayKey,
                   onOpen: widget.onOpen,
+                  onDrop: widget.onReschedule == null
+                      ? null
+                      : (d, {int? minutes, bool toAllDay = false}) =>
+                          _drop(d, selectedKey, minutes: minutes, toAllDay: toAllDay),
                 )
               : selectedTasks.isEmpty
                   ? Center(
@@ -267,11 +292,21 @@ class _CalendarViewState extends State<CalendarView> {
                       padding: const EdgeInsets.all(12),
                       itemCount: selectedTasks.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (_, i) => TaskTile(
-                        task: selectedTasks[i],
-                        projectTitle: widget.projectTitles[selectedTasks[i].project] ?? '',
-                        onTap: () => widget.onOpen(selectedTasks[i]),
-                      ),
+                      itemBuilder: (_, i) {
+                        final t = selectedTasks[i];
+                        final tile = TaskTile(
+                          task: t,
+                          projectTitle: widget.projectTitles[t.project] ?? '',
+                          onTap: () => widget.onOpen(t),
+                        );
+                        if (widget.onReschedule == null) return tile;
+                        return LongPressDraggable<CalDrag>(
+                          data: CalDrag(t, CalDragKind.chip, fromDay: selectedKey),
+                          feedback: calDragFeedback(t, width: 240),
+                          childWhenDragging: Opacity(opacity: 0.35, child: tile),
+                          child: tile,
+                        );
+                      },
                     ),
         ),
       ],
@@ -297,13 +332,22 @@ class _CalendarViewState extends State<CalendarView> {
           }
         }),
         borderRadius: BorderRadius.circular(8),
-        child: Container(
+        child: DragTarget<CalDrag>(
+          onWillAcceptWithDetails: (_) => widget.onReschedule != null,
+          onAcceptWithDetails: (d) => _drop(d.data, key),
+          builder: (context, candidates, _) {
+          final hovering = candidates.isNotEmpty;
+          return Container(
           height: 44,
           margin: const EdgeInsets.all(1),
           decoration: BoxDecoration(
-            color: isSelected ? kOrange.withValues(alpha: 0.18) : null,
+            color: hovering
+                ? kOrange.withValues(alpha: 0.35)
+                : isSelected ? kOrange.withValues(alpha: 0.18) : null,
             borderRadius: BorderRadius.circular(8),
-            border: isSelected ? Border.all(color: kOrange) : null,
+            border: hovering
+                ? Border.all(color: kOrange, width: 2)
+                : isSelected ? Border.all(color: kOrange) : null,
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -351,45 +395,118 @@ class _CalendarViewState extends State<CalendarView> {
               ),
             ],
           ),
+        );
+          },
         ),
       ),
     );
   }
 
-  void _showList(BuildContext context, String title, List<Task> tasks) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: kCard,
-      isScrollControlled: true,
-      builder: (_) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.6,
-        builder: (_, controller) => Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(14),
-              child: Text('$title (${tasks.length})',
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-            ),
-            Expanded(
-              child: ListView.separated(
-                controller: controller,
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-                itemCount: tasks.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (_, i) => TaskTile(
-                  task: tasks[i],
-                  projectTitle: widget.projectTitles[tasks[i].project] ?? '',
-                  onTap: () {
-                    Navigator.pop(context);
-                    widget.onOpen(tasks[i]);
-                  },
+  /// Overdue tasks outside the visible dates and tasks with no date: a
+  /// collapsible strip under the calendar. Tap a chip to open it; long-press to
+  /// drag it onto a day or a time.
+  Widget _tray(List<Task> overdue, List<Task> undated) {
+    const red = Color(0xFFEF4444);
+    final canDrag = widget.onReschedule != null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => setState(() => _trayOpen = !_trayOpen),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: overdue.isNotEmpty ? red.withValues(alpha: 0.10) : kCard,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: overdue.isNotEmpty ? red.withValues(alpha: 0.4) : kBorder),
+              ),
+              child: Row(children: [
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(children: [
+                      if (overdue.isNotEmpty)
+                        TextSpan(
+                            text: '⚠ ${overdue.length} overdue not in view',
+                            style: const TextStyle(color: red)),
+                      if (overdue.isNotEmpty && undated.isNotEmpty)
+                        const TextSpan(text: '  ·  ', style: TextStyle(color: kMuted)),
+                      if (undated.isNotEmpty)
+                        TextSpan(
+                            text: '${undated.length} with no date',
+                            style: const TextStyle(color: kMuted)),
+                    ]),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12.5),
+                  ),
                 ),
+                Icon(_trayOpen ? Icons.expand_less : Icons.expand_more, size: 18, color: kMuted),
+              ]),
+            ),
+          ),
+          if (_trayOpen) ...[
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 34,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  for (final t in overdue) _trayChip(t, CalDragKind.overdue, canDrag),
+                  for (final t in undated) _trayChip(t, CalDragKind.undated, canDrag),
+                ],
               ),
             ),
+            if (canDrag)
+              const Padding(
+                padding: EdgeInsets.only(top: 4, left: 2),
+                child: Text('Long-press a task, then drop it on a day or a time',
+                    style: TextStyle(fontSize: 11, color: kMuted)),
+              ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _trayChip(Task t, CalDragKind kind, bool canDrag) {
+    final overdue = kind == CalDragKind.overdue;
+    final chip = Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => widget.onOpen(t),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: kCard,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: overdue ? const Color(0xFFEF4444) : kBorder),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 200),
+            child: Text(
+              overdue && t.dueDate != null
+                  ? '${t.title} · ${DateFormat('MMM d').format(DateTime.parse(t.dueDate!.substring(0, 10)))}'
+                  : t.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 12.5, color: overdue ? const Color(0xFFEF4444) : Colors.white),
+            ),
+          ),
         ),
       ),
+    );
+    if (!canDrag) return chip;
+    return LongPressDraggable<CalDrag>(
+      data: CalDrag(t, kind),
+      feedback: calDragFeedback(t),
+      childWhenDragging: Opacity(opacity: 0.35, child: chip),
+      child: chip,
     );
   }
 }
