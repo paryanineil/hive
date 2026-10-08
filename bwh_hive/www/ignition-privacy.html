@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/assets/bwh_hive/frontend/images/v12-logo.png" />
+    <title>Ignition Privacy Policy</title>
+    <meta name="description" content="How Ignition, V12 Infotech's task and project app, handles your data, including Google Calendar data." />
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #1a1a1a;
+        --muted: #5c5c5c;
+        --rule: #e6e6e6;
+        --accent: #c2560a;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0b0b0b;
+          --fg: #ededed;
+          --muted: #a3a3a3;
+          --rule: #262626;
+          --accent: #f07a2a;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      main { max-width: 720px; margin: 0 auto; padding: 40px 16px 64px; }
+      header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+      header img { width: 36px; height: 36px; }
+      h1 { font-size: 1.75rem; margin: 0; letter-spacing: -0.01em; }
+      .updated { color: var(--muted); font-size: 0.9rem; margin: 0 0 32px; }
+      h2 { font-size: 1.15rem; margin: 32px 0 8px; padding-top: 24px; border-top: 1px solid var(--rule); }
+      p, li { margin: 0 0 12px; }
+      ul { padding-left: 1.25rem; }
+      a { color: var(--accent); }
+      code { font-size: 0.9em; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <img src="/assets/bwh_hive/frontend/images/v12-logo.png" alt="" />
+        <h1>Ignition Privacy Policy</h1>
+      </header>
+      <p class="updated">Effective 8 October 2026</p>
+
+      <p>
+        Ignition is the task and project management app operated by V12 Infotech at
+        <a href="https://erp2.v12infotech.com/ignition">erp2.v12infotech.com/ignition</a>, for
+        V12 Infotech's team members. This policy explains what data Ignition handles and why,
+        including data from Google Calendar when you choose to connect it.
+      </p>
+
+      <h2>Data Ignition stores</h2>
+      <p>
+        Ignition stores the projects, tasks, checklists, notes, comments and attachments that you and
+        your team create, along with your account details (name and email address) needed to sign you
+        in and assign work. This data is kept on V12 Infotech's own server.
+      </p>
+
+      <h2>Google Calendar</h2>
+      <p>
+        Connecting Google Calendar is optional. If you connect it, Ignition asks Google for permission to
+        manage your calendars (the <code>https://www.googleapis.com/auth/calendar</code> scope), and uses it
+        only to keep your tasks and your calendar in sync:
+      </p>
+      <ul>
+        <li>It creates a calendar for Ignition tasks in your Google account, and adds, updates and removes
+          events in it for tasks that have dates.</li>
+        <li>It reads changes you make to those events, such as a new date, time or title, so the matching
+          task in Ignition can be updated.</li>
+      </ul>
+      <p>
+        Ignition does not read, change or delete your other calendars or events. The sign-in tokens Google
+        issues are stored encrypted on V12 Infotech's server.
+      </p>
+      <p>
+        Ignition's use and transfer of information received from Google APIs adheres to the
+        <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>,
+        including the Limited Use requirements. Data from Google is not sold, not shared with third parties,
+        not used for advertising, and not used to train AI or machine-learning models.
+      </p>
+
+      <h2>Sharing</h2>
+      <p>
+        Your data is visible to the members of your team in Ignition according to the project's sharing
+        settings. V12 Infotech does not sell your data or share it with third parties, except where the law
+        requires it.
+      </p>
+
+      <h2>Keeping and deleting data</h2>
+      <p>
+        Task data is kept for as long as V12 Infotech uses Ignition. You can disconnect Google Calendar at any
+        time; Ignition then stops syncing and its stored Google tokens are removed. You can also revoke
+        Ignition's access from your Google account at
+        <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.
+        To ask for your data to be deleted, contact us at the address below.
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        Questions about this policy or your data: <a href="mailto:info@v12infotech.com">info@v12infotech.com</a>.
+      </p>
+    </main>
+  </body>
+</html>
